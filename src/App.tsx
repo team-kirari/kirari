@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, MouseEvent, ReactNode } from 'react'
-import { ArrowDown, ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Check, Flower2, Heart, Home, Image as ImageIcon, Maximize2, MessageCircle, MoreHorizontal, Palette, Pause, Play, Repeat2, Search, Send, Settings2, Shuffle, SkipBack, SkipForward, SlidersHorizontal, Users, X } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Check, Heart, Home, Image as ImageIcon, Maximize2, MessageCircle, MoreHorizontal, Palette, Search, Send, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
 import { art, gallery, navigation } from './content'
 import type { Route } from './content'
 import { LiquidTransition } from './components/LiquidTransition'
 import type { LiquidHandle } from './components/LiquidTransition'
 import { useWidgetDrag } from './components/useWidgetDrag'
 import type { WidgetPositions } from './components/useWidgetDrag'
+import { MusicWidget } from './components/MusicWidget'
 import { PhotoWidget } from './components/PhotoWidget'
 import { DDaySettings, DDayWidget } from './components/DDayWidget'
 import type { DDay } from './lib/dday'
@@ -39,23 +40,6 @@ function ProfileCard({ person, navigate }: { person: 'kenji' | 'kiyo', navigate:
     <div className="profile-label"><span><small>{isKenji ? '01' : '02'}</small> {isKenji ? 'KENJI' : 'KIYO'}</span><span className="widget-actions"><button className="bare" aria-label={`${isKenji ? '켄지' : '키요'} 좋아요`} aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'} /></button></span></div>
     <div className="profile-content"><button className="avatar" aria-label="프로필 보기" onClick={e => navigate('profile', e)}><img src={isKenji ? art.kenji : art.kiyo} alt="" /></button><div><button className="person-name bare" onClick={e => navigate('profile', e)}>{isKenji ? '켄지' : '키요'}<ArrowUpRight size={13} /></button><p>{isKenji ? 'Kenji' : 'Kiyo'}</p><span className="profile-dot">캐릭터 프로필</span></div></div>
     <div className="tag-row"><span>#{isKenji ? '켄지' : '키요'}</span><span>#{isKenji ? '블루' : '핑크'}</span><span>#kirari</span></div>
-  </section>
-}
-
-function Player() {
-  const [playing, setPlaying] = useState(false)
-  const [progress, setProgress] = useState(32)
-  const [shuffle, setShuffle] = useState(false)
-  const [repeat, setRepeat] = useState(false)
-  const [index, setIndex] = useState(0)
-  const tracks = ['kirari', '켄지의 플레이리스트', '키요의 플레이리스트']
-  const skip = (amount: number) => { setIndex((index + amount + tracks.length) % tracks.length); setProgress(0) }
-  return <section className="widget player" data-widget-id="player" aria-label="플레이리스트">
-    <div className="track"><div className="album-art"><Flower2 size={31} /><i>♪</i></div><div><strong>{tracks[index]}</strong><p>음악 위젯 미리보기</p><span>KENJI & KIYO</span></div></div>
-    <input className="seek" aria-label="플레이어 진행도 미리보기" type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))} style={{ '--progress': `${progress}%` } as CSSProperties} />
-    <div className="time-row"><span>{Math.floor(progress * 2.24 / 60)}:{String(Math.floor(progress * 2.24 % 60)).padStart(2, '0')}</span><span>3:44</span></div>
-    <div className="player-controls"><button aria-label="셔플" aria-pressed={shuffle} onClick={() => setShuffle(!shuffle)}><Shuffle size={16} /></button><button aria-label="이전 곡" onClick={() => skip(-1)}><SkipBack size={18} /></button><button className="play" aria-label={playing ? '시연 일시정지' : '재생 UI 시연'} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button><button aria-label="다음 곡" onClick={() => skip(1)}><SkipForward size={18} /></button><button aria-label="반복" aria-pressed={repeat} onClick={() => setRepeat(!repeat)}><Repeat2 size={17} /></button></div>
-    <p className="micro player-note">{playing ? '재생 UI 시연 중' : '실제 음원은 연결되지 않았어요'}</p>
   </section>
 }
 
@@ -119,7 +103,7 @@ function HomeScreen({ notes, addNote, navigate, hero, feather, positions, setPos
     <LikeWidget />
     <Messages />
     <PhotoWidget index={photoIndex} openGallery={e => navigate('gallery', e)} />
-    <Player />
+    <MusicWidget />
     <div className="notebook-widgets">
       <StoryWidget onOpen={event => navigate('story', event)} />
       <GuestWidget notes={notes} addNote={addNote} />
