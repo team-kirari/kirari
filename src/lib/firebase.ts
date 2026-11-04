@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app'
+import { getFirebaseApp } from './firebase-app'
 import type { FirebaseOptions } from 'firebase/app'
 import { browserPopupRedirectResolver, GoogleAuthProvider, inMemoryPersistence, initializeAuth, onIdTokenChanged, signInWithPopup, signOut } from 'firebase/auth'
 import type { Auth } from 'firebase/auth'
@@ -6,7 +6,7 @@ import type { Auth } from 'firebase/auth'
 let instance: Auth | undefined
 export function getFirebaseAuth(config: FirebaseOptions): Auth {
   if (!instance) {
-    const app = initializeApp(config, 'kirari')
+    const app = getFirebaseApp(config)
     // Never persist authentication tokens in browser storage.
     instance = initializeAuth(app, {
       persistence: inMemoryPersistence,

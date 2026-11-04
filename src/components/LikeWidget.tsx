@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Heart } from 'lucide-react'
 import { seoulDate } from '../lib/dday'
-import { addLike, DAILY_LIKE_LIMIT, emptyLikes, LIKE_STORAGE_KEY, readLikes, resetLikes } from '../lib/likes'
+import { addLike, DAILY_LIKE_LIMIT, emptyLikes, LIKE_STORAGE_KEY, likeLoadErrorMessage, readLikes } from '../lib/likes'
+import { getFirebaseConfig } from '../lib/auth'
+import type { createLikeCounter } from '../lib/firebase-likes'
+
+let connection: Promise<ReturnType<typeof createLikeCounter>> | undefined
+function connect() {
+  const config = getFirebaseConfig(import.meta.env)
+  if (!config) return Promise.reject({ code: 'likes/configuration-missing' })
+  return connection ??= import('../lib/firebase-likes').then(sdk => sdk.createLikeCounter(config))
+    .catch(error => { connection = undefined; throw error })
+}
 
 type HeartBurst = { id: number, particles: { size: number, style: CSSProperties }[] }
 
@@ -13,11 +23,21 @@ function readState() {
 
 export function LikeWidget() {
   const [state, setState] = useState(readState)
+  const [total, setTotal] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [bursts, setBursts] = useState<HeartBurst[]>([])
   const burstId = useRef(0)
   const timers = useRef(new Set<number>())
   const pending = useRef(false)
+  useEffect(() => {
+    let active = true
+    void connect().then(counter => counter.read()).then(value => {
+      if (active) setTotal(value)
+    }).catch(error => {
+      if (active) setState(previous => ({ ...previous, error: likeLoadErrorMessage(error) }))
+    })
+    return () => { active = false }
+  }, [])
   useEffect(() => {
     const activeTimers = timers.current
     return () => { for (const timer of activeTimers) window.clearTimeout(timer); activeTimers.clear() }
@@ -56,7 +76,7 @@ export function LikeWidget() {
       setState(previous => {
         if (next.error) return next.error === previous.error ? previous : next
         const a = previous.count, b = next.count
-        return a.total === b.total && a.day === b.day && a.used === b.used && previous.error === next.error ? previous : next
+        return a.day === b.day && a.used === b.used ? previous : { ...previous, count: b }
       })
     }
     const storage = (event: StorageEvent) => { if (event.key === LIKE_STORAGE_KEY || event.key === null) refresh() }
@@ -70,46 +90,42 @@ export function LikeWidget() {
     }
   }, [])
 
-  async function update(reset = false) {
-    if (reset && !import.meta.env.DEV) return
+  async function update() {
     if (pending.current) return
     pending.current = true
     setBusy(true)
     try {
-      const save = () => {
+      const save = async () => {
         const day = seoulDate()
-        if (reset) {
-          setState({ count: resetLikes(window.localStorage, day), error: '' })
-          setBursts([])
-          return
+        const counter = await connect()
+        const result = await addLike(window.localStorage, day, counter.increment)
+        setState({ count: result.count, error: result.storageFailed ? '좋아요는 반영됐지만 이 브라우저에 오늘 사용 횟수를 저장하지 못했어요.' : '' })
+        if (result.added) {
+          setTotal(previous => previous === null ? previous : previous + 1)
+          popHearts()
         }
-        const before = readLikes(window.localStorage, day)
-        const count = addLike(window.localStorage, day)
-        setState({ count, error: '' })
-        if (count.total > before.total) popHearts()
       }
       if (navigator.locks) await navigator.locks.request(LIKE_STORAGE_KEY, save)
-      else save()
+      else await save()
     } catch {
-      setState(previous => ({ ...previous, error: '좋아요를 저장할 수 없어요. 저장 설정을 확인한 뒤 다시 시도해 주세요.' }))
+      setState(previous => ({ ...previous, error: '좋아요 저장을 확인하지 못했어요. 연결 상태를 확인한 뒤 새로고침해 주세요.' }))
     } finally {
       pending.current = false
       setBusy(false)
     }
   }
 
-  const blocked = busy || !!state.error || state.count.used >= DAILY_LIKE_LIMIT || state.count.total === Number.MAX_SAFE_INTEGER
+  const blocked = total === null || busy || !!state.error || state.count.used >= DAILY_LIKE_LIMIT || total === Number.MAX_SAFE_INTEGER
   return <div className={`floating-chip heart-chip like-widget ${state.count.used ? 'liked' : ''}`} data-widget-id="heart">
-    <button className="bare heart-action" aria-label={state.error ? '좋아요 저장 오류' : `좋아요 누적 ${state.count.total}회`} aria-describedby={state.error ? 'like-status' : undefined} disabled={blocked} onClick={() => void update()}>
+    <button className="bare heart-action" aria-label={state.error ? '좋아요 저장 오류' : total === null ? '좋아요 불러오는 중' : `좋아요 누적 ${total}회`} aria-describedby={state.error ? 'like-status' : undefined} disabled={blocked} onClick={() => void update()}>
       <span className="like-heart-origin" aria-hidden="true">
         <Heart size={16} fill={state.count.used ? 'currentColor' : 'none'} />
         {bursts.map(burst => <span className="like-burst" key={burst.id}>
           {burst.particles.map((particle, index) => <Heart key={index} className="like-particle" size={particle.size} style={particle.style} fill="currentColor" />)}
         </span>)}
       </span>
-      <span>좋아요 <strong aria-live="polite" aria-atomic="true">{state.error ? '—' : state.count.total.toLocaleString('ko-KR')}</strong></span>
+      <span>좋아요 <strong aria-live="polite" aria-atomic="true">{total === null ? '—' : total.toLocaleString('ko-KR')}</strong></span>
     </button>
     {state.error && <span className="like-status" id="like-status" role="status">{state.error}</span>}
-    {import.meta.env.DEV && <button className="bare like-reset" data-no-drag disabled={busy} onClick={() => void update(true)} aria-label="개발용 좋아요 누적 횟수와 오늘 사용 횟수 초기화">초기화 · 개발용</button>}
   </div>
 }

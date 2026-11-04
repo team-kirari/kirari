@@ -94,7 +94,6 @@
 .like-widget .heart-action:disabled{cursor:default}
 .like-widget .heart-action strong{margin-left:4px;font-variant-numeric:tabular-nums}
 .like-status{font-size:9px;line-height:1.6;text-align:center;overflow-wrap:anywhere}
-.like-reset{font-size:9px;opacity:.65;text-decoration:underline;text-underline-offset:3px;padding:4px}
 .like-heart-origin{position:relative;display:inline-flex;flex-shrink:0;overflow:visible}
 .like-burst{position:absolute;inset:0;pointer-events:none;color:var(--pink)}
 .like-particle{--heart-drift:0px;--heart-rise:-66px;--heart-turn:8deg;position:absolute;left:1px;top:0;opacity:0;pointer-events:none;animation:like-heart-pop 1s cubic-bezier(.2,.55,.45,1) both;filter:drop-shadow(0 2px 2px #be82962b)}
