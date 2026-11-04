@@ -7,7 +7,7 @@
 
 현재는 외관 미리보기 앱을 구현한 단계입니다. `npm ci` 후 `npm run dev`로 실행할 수 있습니다.
 홈 위젯, 프로필, 갤러리와 이미지 확대, 이야기·기록의 준비 화면, 로컬 방명록 시연을 제공합니다.
-Discord·서버 저장과 실제 배포 워크플로는 아직 구현하지 않았습니다.
+Discord·서버 저장은 아직 구현하지 않았습니다. GitHub Pages 배포 워크플로는 `.github/workflows/pages.yml`에 구성되어 있습니다.
 관리자 로그인은 Firebase Authentication의 Google 팝업 로그인을 사용합니다. 지정 이메일·이메일 인증·Google 로그인 공급자를 확인해 관리자 상태를 표시합니다.
 실제 사용에는 Firebase 웹 앱 설정이 필요합니다. [관리자 로그인 설정 안내](docs/admin-login.md)를 따르세요.
 GitHub Pages 정적 호스팅을 유지하며 Cloudflare Access·Worker는 필요하지 않습니다. 로그인 토큰은 메모리에만 보관해 새로고침하면 로그인이 해제됩니다.
@@ -251,18 +251,22 @@ npm run preview
 접속 주소는 명령 실행 후 터미널에 표시된 값을 사용합니다.
 비밀키나 Discord 연결 없이도 기본 UI와 공개 콘텐츠를 확인할 수 있어야 합니다.
 
-## GitHub Pages 배포 계획
+## GitHub Pages 배포
 
-아직 배포 파일이나 원격 설정은 만들지 않았습니다. 앱 구현 후 다음 순서로 구성합니다.
+사이트 주소는 **https://team-kirari.github.io/kirari/** 입니다. Vite `base`는 `/kirari/`이며 메뉴는 해시 주소를 사용합니다. 예를 들어 `/kirari/#gallery`로 직접 들어가거나 새로고침해도 같은 정적 진입점을 사용합니다.
 
-1. 실제 저장소 이름, 기본 브랜치와 사용할 사이트 주소를 확인합니다.
-2. `https://<owner>.github.io/kirari/`에 배포한다면 Vite `base`를 `/kirari/`로 설정합니다.
-3. 사용자·조직 루트 사이트나 커스텀 도메인에서 제공한다면 `base`를 `/`로 설정합니다.
-4. 이미지와 링크에도 배포 기준 경로를 적용하고 `/assets/...` 같은 루트 경로 하드코딩을 피합니다.
-5. 저장소 Settings → Pages에서 배포 Source를 GitHub Actions로 지정합니다.
-6. CI에서 고정한 Node.js로 `npm ci`, 정적 검사, 필요한 테스트, 빌드를 실행합니다.
-7. 배포 아티팩트는 `dist/`만 업로드하고 `github-pages` 환경으로 배포합니다.
-8. 배포 주소에서 이미지, 메뉴, 해시 상세 주소 직접 진입과 새로고침을 확인합니다.
+`.github/workflows/pages.yml`은 `main`에 push하면 검사와 빌드 후 `dist/`만 GitHub Pages에 배포합니다. Actions 탭에서 수동 실행할 수도 있습니다. `main` 대상 PR에서는 검사와 빌드만 실행합니다. Node.js 버전은 `.node-version`으로 고정하고 공식 액션은 전체 커밋 SHA로 고정합니다. Pages 쓰기 권한은 배포 작업에만 부여합니다.
+
+저장소 Settings → Pages의 Source는 **GitHub Actions**를 사용합니다. Firebase 관리자 로그인을 사용하려면 Settings → Secrets and variables → Actions → Variables에 아래 공개 웹 앱 설정을 등록합니다. 이 값은 빌드에 포함되어 방문자에게 공개됩니다. OAuth Secret이나 서비스 계정 키는 등록하지 않습니다.
+
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_APP_ID`
+
+설정이 없으면 공개 화면은 제공하고 로그인은 비활성화합니다. Firebase Authentication의 승인된 도메인에는 `team-kirari.github.io`를 추가해야 합니다. 로컬 `.env.local`은 커밋하거나 배포 아티팩트에 복사하지 않습니다.
+
+배포 후 사용자가 이미지, 메뉴, `/kirari/#gallery` 직접 진입과 새로고침, 모바일 화면, 실제 Google 로그인을 확인해야 합니다. 명령줄 검사와 Actions 성공만으로 화면·실계정 검증을 완료했다고 간주하지 않습니다.
 
 배포 방법과 기본 경로는 [Vite 공식 정적 배포 안내](https://vite.dev/guide/static-deploy.html#github-pages)를 참고합니다.
 공식 문서 확인일은 **2026-11-04**이며, 실제 구성 시 Actions 버전과 호스팅 정책을 다시 확인합니다.
