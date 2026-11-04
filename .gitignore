@@ -31,3 +31,5 @@ dist/
 test-results/
 playwright-report/
 .wrangler/
+*-debug.log
+*-debug.*.log

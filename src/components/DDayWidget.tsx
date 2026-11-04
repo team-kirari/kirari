@@ -18,11 +18,11 @@ export function DDayWidget({ items }: { items: DDay[] }) {
       {items.map(item => {
         const label = dDayLabel(item.date, today)
         return <div className="dday-row" key={item.id}>
-          <div><span className="dday-name">{item.title || 'D-day'}</span><span className="dday-date">{label ? item.date.replaceAll('-', '.') : '옵션에서 날짜 설정'}</span></div>
+          <div><span className="dday-name">{item.title || 'D-day'}</span><span className="dday-date">{label ? item.date.replaceAll('-', '.') : '날짜 준비 중'}</span></div>
           <strong>{label || 'D—'}</strong>
         </div>
       })}
-      {items.length === 0 && <p className="dday-empty">옵션에서 D-day를 추가해 주세요.</p>}
+      {items.length === 0 && <p className="dday-empty">등록된 D-day가 없어요.</p>}
     </div>
   </section>
 }
@@ -32,7 +32,7 @@ export function DDaySettings({ items, setItems }: { items: DDay[], setItems: Dis
     setItems(previous => previous.map(item => item.id === id ? { ...item, [field]: value } : item))
   }
   return <section className="dday-settings" aria-label="D-day 설정">
-    <div className="dday-settings-heading"><span>D-day 항목 <small>{items.length}개</small></span><button className="soft-button" onClick={() => setItems(previous => [...previous, { id: crypto.randomUUID(), title: 'D-day', date: '' }])}>추가 +</button></div>
+    <div className="dday-settings-heading"><span>D-day 항목 <small>{items.length} / 10개</small></span><button className="soft-button" disabled={items.length >= 10} onClick={() => setItems(previous => previous.length >= 10 ? previous : [...previous, { id: crypto.randomUUID(), title: 'D-day', date: '' }])}>추가 +</button></div>
     <p>추가한 항목은 하나의 위젯 안에 아래로 쌓여요.</p>
     {items.length === 0 && <p className="dday-no-items">추가를 눌러 첫 D-day를 설정해 주세요.</p>}
     {items.map((item, index) => <div className="dday-setting-item" key={item.id}>

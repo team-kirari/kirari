@@ -20,7 +20,7 @@ function moveToFront(positions: WidgetPositions, id: string, offset: WidgetOffse
   return { ...next, [id]: offset }
 }
 
-export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch<SetStateAction<WidgetPositions>>, layoutKey = '') {
+export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch<SetStateAction<WidgetPositions>>, layoutKey = '', enabled = false) {
   const scene = useRef<HTMLDivElement>(null)
   const active = useRef<ActiveDrag | null>(null)
   const suppressClick = useRef(false)
@@ -40,12 +40,13 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
       applyStackOrder(container!, Object.keys(positions))
       const mobile = isMobile()
       for (const element of container!.querySelectorAll<HTMLElement>('[data-widget-id]')) {
-        element.tabIndex = mobile ? -1 : 0
+        element.tabIndex = mobile || !enabled ? -1 : 0
         if (mobile) {
           apply(element, { x: 0, y: 0 })
           element.removeAttribute('data-moved')
           element.removeAttribute('title')
-        } else element.title = '드래그하여 이동 · 방향키로 조절 · Shift로 크게 이동'
+        } else if (enabled) element.title = '드래그하여 이동 · 방향키로 조절 · Shift로 크게 이동'
+        else element.removeAttribute('title')
       }
       if (mobile) return
       const bounds = container!.getBoundingClientRect()
@@ -62,7 +63,7 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
         element.dataset.moved = 'true'
         if (clamped.x !== offset.x || clamped.y !== offset.y) updates[id] = clamped
       }
-      if (Object.keys(updates).length) setPositions(previous => ({ ...previous, ...updates }))
+      if (enabled && Object.keys(updates).length) setPositions(previous => ({ ...previous, ...updates }))
     }
     restoreAndClamp()
     const observer = new ResizeObserver(restoreAndClamp)
@@ -73,7 +74,7 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
       observer.disconnect()
       window.removeEventListener('resize', restoreAndClamp)
     }
-  }, [positions, setPositions, layoutKey])
+  }, [positions, setPositions, layoutKey, enabled])
 
   function finish(cancelled = false) {
     const drag = active.current
@@ -89,7 +90,7 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
   }
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (isMobile()) return
+    if (!enabled || isMobile()) return
     const target = event.target as HTMLElement
     const element = target.closest<HTMLElement>('[data-widget-id]')
     if (!element || target.closest('input, textarea, select, [contenteditable=true], [data-no-drag]') || !scene.current || event.button !== 0 || active.current) return
@@ -108,6 +109,7 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = active.current
     if (!drag || event.pointerId !== drag.pointerId || !scene.current) return
+    if (!enabled) { finish(true); return }
     if (isMobile()) { finish(true); return }
     if (!drag.moved) {
       if (Math.hypot(event.clientX - drag.origin.x, event.clientY - drag.origin.y) < 6) return
@@ -128,7 +130,7 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape' && active.current) { event.preventDefault(); finish(true); return }
-    if (isMobile()) return
+    if (!enabled || isMobile()) return
     const element = (event.target as HTMLElement).closest<HTMLElement>('[data-widget-id]')
     if (event.target !== element) return
     const directions: Record<string, WidgetOffset> = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } }

@@ -1,6 +1,3 @@
-// Public identity for UI controls. Data authorization belongs in server rules.
-export const ADMIN_EMAILS: readonly string[] = ['flosnidor9@gmail.com', 'asum0224@gmail.com']
-
 export function getFirebaseConfig(env: Record<string, unknown>) {
   const apiKey = env.VITE_FIREBASE_API_KEY
   const authDomain = env.VITE_FIREBASE_AUTH_DOMAIN
@@ -13,12 +10,17 @@ export function getFirebaseConfig(env: Record<string, unknown>) {
   return { apiKey, authDomain, projectId, appId }
 }
 
-export function isAdminIdentity(claims: unknown, allowedEmails: readonly string[] = ADMIN_EMAILS): boolean {
+// Identity is a prerequisite. Administrator membership comes from admins/{uid}.
+export function isVerifiedGoogleIdentity(claims: unknown): boolean {
   if (typeof claims !== 'object' || claims === null) return false
-  const { email, email_verified: verified, firebase } = claims as Record<string, unknown>
-  return typeof email === 'string' && allowedEmails.some(allowed => email.toLowerCase() === allowed.toLowerCase())
-    && verified === true && typeof firebase === 'object' && firebase !== null
+  const { email_verified: verified, firebase } = claims as Record<string, unknown>
+  return verified === true && typeof firebase === 'object' && firebase !== null
     && 'sign_in_provider' in firebase && firebase.sign_in_provider === 'google.com'
+}
+
+export function isActiveAdminRecord(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    && 'enabled' in value && value.enabled === true
 }
 
 export function loginErrorMessage(error: unknown): string {

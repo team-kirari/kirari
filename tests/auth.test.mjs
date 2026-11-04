@@ -1,27 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { getFirebaseConfig, isAdminIdentity, loginErrorMessage } from '../src/lib/auth.ts'
+import { getFirebaseConfig, isVerifiedGoogleIdentity, isActiveAdminRecord, loginErrorMessage } from '../src/lib/auth.ts'
 
-const fakeEmail = 'fake-admin@gmail.com'
-const secondEmail = 'fake-second-admin@gmail.com'
-const allowedEmails = [fakeEmail, secondEmail]
-const claims = { email: fakeEmail, email_verified: true, firebase: { sign_in_provider: 'google.com' } }
+const claims = { email_verified: true, firebase: { sign_in_provider: 'google.com' } }
 
-test('only verified Google admin identities enable admin controls', () => {
-  assert.equal(isAdminIdentity(claims, allowedEmails), true)
-  assert.equal(isAdminIdentity({ ...claims, email: fakeEmail.toUpperCase() }, allowedEmails), true)
-  assert.equal(isAdminIdentity({ ...claims, email: secondEmail }, allowedEmails), true)
-  assert.equal(isAdminIdentity({ ...claims, email: secondEmail, email_verified: false }, allowedEmails), false)
-  assert.equal(isAdminIdentity({ ...claims, email: secondEmail, firebase: { sign_in_provider: 'password' } }, allowedEmails), false)
-  assert.equal(isAdminIdentity(claims, []), false)
-  assert.equal(isAdminIdentity(claims, [secondEmail]), false)
-  for (const identity of [null, {}, 'admin', { ...claims, email: 'member-a@gmail.com' },
-    { ...claims, email: 'member-b@gmail.com' }, { ...claims, email: `${fakeEmail}.evil.example` },
-    { ...claims, email_verified: false }, { ...claims, email_verified: 'true' },
-    { ...claims, firebase: null }, { ...claims, firebase: { sign_in_provider: 'password' } },
-    { ...claims, firebase: { sign_in_provider: 'custom' } }, { ...claims, role: 'admin', email: '' }]) {
-    assert.equal(isAdminIdentity(identity, allowedEmails), false)
+test('verified Google identity alone never determines administrator membership', () => {
+  assert.equal(isVerifiedGoogleIdentity(claims), true)
+  for (const identity of [null, {}, 'admin', { ...claims, email_verified: false },
+    { ...claims, email_verified: 'true' }, { ...claims, firebase: null },
+    { ...claims, firebase: { sign_in_provider: 'password' } },
+    { ...claims, firebase: { sign_in_provider: 'custom' } }, { role: 'admin' }]) {
+    assert.equal(isVerifiedGoogleIdentity(identity), false)
   }
+})
+
+test('only an explicitly enabled administrator record grants the role', () => {
+  assert.equal(isActiveAdminRecord({ enabled: true }), true)
+  for (const record of [null, undefined, {}, [], { enabled: false }, { enabled: 'true' },
+    { enabled: 1 }, { admin: true }, { role: 'admin' }]) assert.equal(isActiveAdminRecord(record), false)
 })
 
 test('missing, placeholder and malformed Firebase config fail closed', () => {
