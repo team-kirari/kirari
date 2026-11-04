@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
-import { coveringRadius, liquidPath } from '../lib/liquid'
+import { coveringRadius, createLiquidMotion, liquidPath } from '../lib/liquid'
 
 export type LiquidHandle = {
   play: (x: number, y: number, color: string, covered: () => void) => void
@@ -24,9 +24,10 @@ export const LiquidTransition = forwardRef<LiquidHandle>(function LiquidTransiti
       const shape = path.current
       const width = window.innerWidth
       const height = window.innerHeight
+      const motion = createLiquidMotion()
       overlay.setAttribute('viewBox', `0 0 ${width} ${height}`)
       shape.setAttribute('fill', color)
-      shape.setAttribute('d', liquidPath(x, y, 0, 0))
+      shape.setAttribute('d', liquidPath(x, y, 0, 0, motion))
       overlay.style.visibility = 'visible'
       overlay.style.opacity = '1'
       overlay.style.pointerEvents = 'all'
@@ -36,15 +37,15 @@ export const LiquidTransition = forwardRef<LiquidHandle>(function LiquidTransiti
       let swapped = false
       function tick(now: number) {
         const elapsed = now - started
-        const p = Math.min(1, elapsed / 820)
-        const eased = 1 - Math.pow(1 - p, 3)
-        shape.setAttribute('d', liquidPath(x, y, 4 + maxRadius * eased, p))
+        const p = Math.min(1, elapsed / 1150)
+        const eased = p * p * (3 - 2 * p)
+        shape.setAttribute('d', liquidPath(x, y, 4 + maxRadius * eased, p, motion))
         if (p === 1 && !swapped) {
           covered()
           swapped = true
         }
-        if (elapsed > 880) overlay.style.opacity = String(Math.max(0, 1 - (elapsed - 880) / 330))
-        if (elapsed < 1210) frame.current = requestAnimationFrame(tick)
+        if (elapsed > 1210) overlay.style.opacity = String(Math.max(0, 1 - (elapsed - 1210) / 330))
+        if (elapsed < 1540) frame.current = requestAnimationFrame(tick)
         else {
           overlay.style.visibility = 'hidden'
           overlay.style.pointerEvents = 'none'
