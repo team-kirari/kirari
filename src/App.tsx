@@ -64,9 +64,9 @@ function CalendarWidget() {
   return <div className="widget date-widget" data-widget-id="date"><span><CalendarDays size={12} /> {date.toUpperCase()}</span><strong>{new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', day: '2-digit' }).format(today)}</strong><small>{weekday} <span>✧</span></small></div>
 }
 
-function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions, setPositions, ddays, photoIndex, playEntrance, setPlayEntrance, draggable }: { draggable: boolean, music: MusicPlayback, navigate: Navigate, hero: 'portrait' | 'pair', feather: number, positions: WidgetPositions, setPositions: React.Dispatch<React.SetStateAction<WidgetPositions>>, ddays: DDay[], photoIndex: number, playEntrance: boolean, setPlayEntrance: React.Dispatch<React.SetStateAction<boolean>> } & GuestNotesProps) {
+function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions, setPositions, ddays, photoIndex, playEntrance, setPlayEntrance, draggable, loading }: { loading: boolean, draggable: boolean, music: MusicPlayback, navigate: Navigate, hero: 'portrait' | 'pair', feather: number, positions: WidgetPositions, setPositions: React.Dispatch<React.SetStateAction<WidgetPositions>>, ddays: DDay[], photoIndex: number, playEntrance: boolean, setPlayEntrance: React.Dispatch<React.SetStateAction<boolean>> } & GuestNotesProps) {
   const [entrance, setEntrance] = useState(playEntrance ? 'waiting' : 'done')
-  const drag = useWidgetDrag(positions, setPositions, ddays.map(item => item.id).join(','), draggable)
+  const drag = useWidgetDrag(positions, setPositions, `${loading}:` + ddays.map(item => item.id).join(','), draggable && !loading)
   useEffect(() => {
     if (entrance !== 'waiting') return
     let cancelled = false
@@ -82,14 +82,19 @@ function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions,
     return () => { cancelled = true }
   }, [entrance, drag.ref, setPlayEntrance])
   useEffect(() => {
-    if (entrance !== 'playing') return
-    // Interaction can cancel an individual animation, including the last widget.
-    const timer = window.setTimeout(() => setEntrance('done'), 2000)
-    return () => window.clearTimeout(timer)
-  }, [entrance])
-  return <div className={`desktop-scene scene-entrance-${entrance}`} data-draggable={draggable} {...drag} onAnimationEnd={event => {
-    if (event.animationName === 'scene-widget-rise' && (event.target as HTMLElement).dataset.widgetId === 'guest') setEntrance('done')
-  }}>
+    if (entrance !== 'playing' || loading) return
+    let cancelled = false
+    const animations = drag.ref.current?.getAnimations({ subtree: true }).filter(animation =>
+      animation instanceof CSSAnimation && ['scene-hero-rise', 'scene-widget-rise'].includes(animation.animationName)
+    ) ?? []
+    // Widgets mount after the layout arrives; wait for their own full animations.
+    // Cancelled animations also settle so dragging or focusing cannot stall this.
+    void Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+      if (!cancelled) setEntrance('done')
+    })
+    return () => { cancelled = true }
+  }, [entrance, loading, drag.ref])
+  return <div className={`desktop-scene scene-entrance-${entrance}`} data-draggable={draggable} {...drag}>
     <div className="scene-watermark" aria-hidden="true">kirari<span>✳</span></div>
     <div className="background-panel panel-one" aria-hidden="true"><div /><div /><div /></div>
     <div className="background-panel panel-two" aria-hidden="true"><span>✧</span></div>
@@ -97,6 +102,7 @@ function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions,
     <span className="decoration star-one" aria-hidden="true">✧</span><span className="decoration star-two" aria-hidden="true">✦</span><span className="decoration plus-one" aria-hidden="true">＋</span><span className="decoration dot-matrix" aria-hidden="true">····<br />····<br />····</span>
     <svg className="art-filter-definitions" aria-hidden="true" width="0" height="0"><defs><filter id="hero-edge-feather" x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation={feather / 2} result="soft-alpha" /><feComposite in="SourceGraphic" in2="soft-alpha" operator="in" /></filter></defs></svg>
     <div className="hero-art"><img className={hero === 'pair' ? 'chibi-hero' : ''} style={{ filter: feather > 0 ? 'url(#hero-edge-feather)' : 'none' }} src={art[hero]} alt="함께 있는 켄지와 키요" fetchPriority="high" /></div>
+    {!loading && <>
     <ProfileCard person="kenji" navigate={navigate} />
     <ProfileCard person="kiyo" navigate={navigate} />
     <div className="date-widgets">
@@ -111,6 +117,7 @@ function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions,
       <StoryWidget onOpen={event => navigate('story', event)} />
       <GuestWidget notes={notes} addNote={addNote} />
     </div>
+    </>}
     <span className="scene-bottom-mark" aria-hidden="true">✦ <span>kirari</span> ✦</span>
   </div>
 }
@@ -238,7 +245,7 @@ export default function App() {
     <a className="skip-link" href="#main">본문으로 건너뛰기</a>
     <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); navigate('gallery') }}><Search size={15} /><input aria-label="공개 그림 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav aria-label="메인 메뉴">{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => setTheme(t)} />)}</div>{admin && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" onClick={() => setSettings(!settings)}><SlidersHorizontal size={18} /></button>}</header>
     {shared.status && <p className="site-settings-status" role="status">{shared.status}</p>}
-    <div className="workspace"><aside className="side-rail" aria-label="바로가기">{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><main id="main" tabIndex={-1}>{route === 'home' ? <HomeScreen draggable={!shared.saving} music={music} notes={guestNotes} addNote={addGuestNote} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen notes={guestNotes} addNote={addGuestNote} route={route} navigate={navigate} query={query} setQuery={setQuery} />}</main></div>
+    <div className="workspace"><aside className="side-rail" aria-label="바로가기">{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><main id="main" tabIndex={-1}>{route === 'home' ? <HomeScreen loading={shared.loading} draggable={!shared.saving} music={music} notes={guestNotes} addNote={addGuestNote} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen notes={guestNotes} addNote={addGuestNote} route={route} navigate={navigate} query={query} setQuery={setQuery} />}</main></div>
     <footer><span><i /> kirari <span className="footer-divider">/</span> 켄지 & 키요</span><div className="admin-login-bar"><AdminLogin onAdminChange={onAdminChange} /></div></footer>
     {admin && settings && <div ref={settingsRef} className="settings-panel widget" id="appearance-settings">
       <WidgetTitle icon={<Palette size={16} />} action={<button className="bare" aria-label="설정 닫기" onClick={() => { setSettings(false); settingsToggle.current?.focus() }}><X size={16} /></button>}>화면 설정</WidgetTitle>
@@ -258,7 +265,7 @@ export default function App() {
       </div>
       <DDaySettings items={ddays} setItems={setDdays} />
       <p>위젯 배치</p>
-      <button className="soft-button reset-widget-positions" onClick={() => setWidgetPositions({})}>위젯 위치 초기화</button>
+      <button className="soft-button reset-widget-positions" disabled={!shared.ready} onClick={() => setWidgetPositions(shared.published.positions)}>위젯 위치 초기화</button>
       <small>데스크톱에서 위젯을 드래그하거나 방향키로 이동하세요. 모바일은 기본 배치를 유지합니다.</small>
       </fieldset>
       <div className="appearance-actions"><button className="primary-button" disabled={shared.saving || !shared.ready} onClick={() => void shared.save()}>{shared.saving ? '저장 중…' : '모두에게 적용 · 저장'}</button><button className="soft-button" disabled={shared.saving} onClick={() => shared.setDraft(null)}>편집 취소</button></div>

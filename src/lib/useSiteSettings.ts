@@ -7,8 +7,9 @@ import type { createSettingsStore } from './firebase-settings'
 export function useSiteSettings() {
   const [published, setPublished] = useState(defaultSettings)
   const [draft, setDraft] = useState<SiteSettings | null>(null)
-  const [status, setStatus] = useState('공용 화면 설정을 불러오는 중…')
+  const [status, setStatus] = useState('')
   const [ready, setReady] = useState(false)
+  const [loading, setLoading] = useState(() => Boolean(getFirebaseConfig(import.meta.env)))
   const [saving, setSaving] = useState(false)
   const store = useRef<ReturnType<typeof createSettingsStore> | null>(null)
   useEffect(() => {
@@ -16,15 +17,20 @@ export function useSiteSettings() {
     let unsubscribe: (() => void) | undefined
     const config = getFirebaseConfig(import.meta.env)
     if (!config) return
+    // Firestore can keep retrying offline without invoking the error callback.
+    const timeout = window.setTimeout(() => {
+      if (active) { setLoading(false); setStatus('') }
+    }, 10000)
     void import('./firebase-settings').then(({ createSettingsStore }) => {
       if (!active) return
       store.current = createSettingsStore(config)
       unsubscribe = store.current.subscribe(value => {
         if (!active) return
-        setPublished(value); setReady(true); setStatus('')
-      }, () => { if (active) { setReady(false); setStatus('공용 설정을 읽지 못했습니다. 연결과 Firestore 규칙을 확인한 뒤 새로고침해 주세요.') } })
-    }).catch(() => { if (active) setStatus('공용 설정 연결을 준비하지 못했습니다. 새로고침해 주세요.') })
-    return () => { active = false; unsubscribe?.(); store.current = null }
+        window.clearTimeout(timeout)
+        setPublished(value); setReady(true); setLoading(false); setStatus('')
+      }, () => { if (active) { window.clearTimeout(timeout); setReady(false); setLoading(false); setStatus('') } })
+    }).catch(() => { if (active) { window.clearTimeout(timeout); setLoading(false); setStatus('') } })
+    return () => { active = false; window.clearTimeout(timeout); unsubscribe?.(); store.current = null }
   }, [])
   async function save() {
     if (!draft || !store.current || !ready || saving) return
@@ -40,5 +46,5 @@ export function useSiteSettings() {
         : '저장하지 못했습니다. 네트워크와 관리자 권한을 확인한 뒤 다시 시도해 주세요.')
     } finally { setSaving(false) }
   }
-  return { published, draft, setDraft, ready, saving, save, status: getFirebaseConfig(import.meta.env) ? status : 'Firebase 설정이 없어 기본 화면을 표시합니다.' }
+  return { published, draft, setDraft, ready, loading, saving, save, status: getFirebaseConfig(import.meta.env) ? status : '' }
 }
