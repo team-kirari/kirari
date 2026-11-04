@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CSSProperties, FormEvent, MouseEvent, ReactNode } from 'react'
-import { ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Heart, Home, Image as ImageIcon, Maximize2, MessageCircle, MoreHorizontal, Palette, Search, Send, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
+import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Heart, Home, Image as ImageIcon, Maximize2, MessageCircle, MoreHorizontal, Palette, Search, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
 import { art, gallery, navigation } from './content'
 import type { Route } from './content'
 import { LiquidTransition } from './components/LiquidTransition'
@@ -16,8 +16,12 @@ import type { DDay } from './lib/dday'
 import { useSiteSettings } from './lib/useSiteSettings'
 import { GuestWidget, StoryWidget } from './components/NotebookWidgets'
 import { LikeWidget } from './components/LikeWidget'
+import { Messages } from './components/Messages'
+import type { MessageWriter } from './lib/messages'
 import { AdminLogin } from './components/AdminLogin'
 import type { GuestNotesProps } from './components/NotebookWidgets'
+import { GuestScreen } from './components/GuestScreen'
+import { useGuestbook } from './lib/useGuestbook'
 
 type Navigate = (route: Route, event?: MouseEvent<HTMLElement>) => void
 const icons = { home: Home, profile: Users, gallery: ImageIcon, story: BookOpen, log: CalendarDays, guest: MessageCircle }
@@ -46,17 +50,6 @@ function ProfileCard({ person, navigate }: { person: 'kenji' | 'kiyo', navigate:
   </section>
 }
 
-function Messages() {
-  const [draft, setDraft] = useState('')
-  const [messages, setMessages] = useState(['오늘은 어떤 기록을 남겨볼까?', '그림부터 정리해 보자 ♡'])
-  function submit(e: FormEvent) { e.preventDefault(); if (!draft.trim()) return; setMessages([...messages.slice(-1), draft.trim()]); setDraft('') }
-  return <section className="widget messages" data-widget-id="messages" aria-label="메시지">
-    <div className="chat-lines" aria-live="polite">{messages.map((message, i) => <div className={`chat-line ${i ? 'self' : ''}`} key={`${i}-${message}`}><img src={i ? art.kiyoSD : art.kenjiSD} alt="" /><span>{message}</span></div>)}</div>
-    <form onSubmit={submit} className="message-form"><input aria-label="메시지 시연 입력" maxLength={80} placeholder="메시지 입력…" value={draft} onChange={e => setDraft(e.target.value)} /><button aria-label="화면에 메시지 추가" type="submit"><Send size={16} /></button></form>
-    <span className="micro">이 화면에서만 보이는 대화 시연</span>
-  </section>
-}
-
 function CalendarWidget() {
   const today = new Date()
   const date = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', month: 'short', day: '2-digit' }).format(today)
@@ -64,7 +57,7 @@ function CalendarWidget() {
   return <div className="widget date-widget" data-widget-id="date"><span><CalendarDays size={12} /> {date.toUpperCase()}</span><strong>{new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', day: '2-digit' }).format(today)}</strong><small>{weekday} <span>✧</span></small></div>
 }
 
-function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions, setPositions, ddays, photoIndex, playEntrance, setPlayEntrance, draggable, loading }: { loading: boolean, draggable: boolean, music: MusicPlayback, navigate: Navigate, hero: 'portrait' | 'pair', feather: number, positions: WidgetPositions, setPositions: React.Dispatch<React.SetStateAction<WidgetPositions>>, ddays: DDay[], photoIndex: number, playEntrance: boolean, setPlayEntrance: React.Dispatch<React.SetStateAction<boolean>> } & GuestNotesProps) {
+function HomeScreen({ writer, admin, music, guest, navigate, hero, feather, positions, setPositions, ddays, photoIndex, playEntrance, setPlayEntrance, draggable, loading }: { writer: MessageWriter | null, admin: boolean, loading: boolean, draggable: boolean, music: MusicPlayback, navigate: Navigate, hero: 'portrait' | 'pair', feather: number, positions: WidgetPositions, setPositions: React.Dispatch<React.SetStateAction<WidgetPositions>>, ddays: DDay[], photoIndex: number, playEntrance: boolean, setPlayEntrance: React.Dispatch<React.SetStateAction<boolean>> } & GuestNotesProps) {
   const [entrance, setEntrance] = useState(playEntrance ? 'waiting' : 'done')
   const drag = useWidgetDrag(positions, setPositions, `${loading}:` + ddays.map(item => item.id).join(','), draggable && !loading)
   useEffect(() => {
@@ -110,12 +103,12 @@ function HomeScreen({ music, notes, addNote, navigate, hero, feather, positions,
       <DDayWidget items={ddays} />
     </div>
     <LikeWidget />
-    <Messages />
+    <Messages key={`${admin}:${writer ? `${writer.uid}:${writer.character}` : "guest"}`} writer={writer} admin={admin} />
     <PhotoWidget index={photoIndex} openGallery={e => navigate('gallery', e)} />
     <MusicWidget playback={music} />
     <div className="notebook-widgets">
       <StoryWidget onOpen={event => navigate('story', event)} />
-      <GuestWidget notes={notes} addNote={addNote} />
+      <GuestWidget guest={guest} />
     </div>
     </>}
     <span className="scene-bottom-mark" aria-hidden="true">✦ <span>kirari</span> ✦</span>
@@ -135,36 +128,27 @@ function GalleryScreen({ query, setQuery }: { query: string, setQuery: (q: strin
   </>
 }
 
-function GuestScreen({ notes, addNote }: GuestNotesProps) {
-  const [draft, setDraft] = useState('')
-  const submit = (e: FormEvent) => { e.preventDefault(); if (draft.trim()) { addNote(draft); setDraft('') } }
-  return <div className="guest-layout"><div className="guest-intro"><img src={art.pair} alt="켄지와 키요" /><span className="category-tag">방명록 미리보기</span><h2>한 줄 남기기</h2><p>작성한 글은 지금 화면에만 표시돼요.<br />새로고침하면 사라집니다.</p></div><div><form className="guest-form" onSubmit={submit}><label htmlFor="guest-message">메시지</label><textarea id="guest-message" required maxLength={180} placeholder="메시지를 적어 주세요." value={draft} onChange={e => setDraft(e.target.value)} /><div><span>{draft.length} / 180</span><button className="primary-button" type="submit">화면에 남기기 <ArrowUpRight size={16} /></button></div></form><div className="guest-notes" aria-live="polite">{notes.length ? notes.map((note, i) => <article key={i}><Heart size={16} /><p>{note}</p><span>방문자 · 화면 시연</span></article>) : <div className="empty-note"><MessageCircle size={26} /><p>아직 남겨진 메시지가 없어요.</p></div>}</div></div></div>
-}
-
-function InnerScreen({ route, navigate, query, setQuery, notes, addNote }: { route: Route, navigate: Navigate, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
+function InnerScreen({ route, navigate, query, setQuery, guest, admin }: { admin: boolean, route: Route, navigate: Navigate, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
   const info = { profile: ['두 사람의 프로필', '켄지와 키요를 소개합니다.'], gallery: ['갤러리', '그림과 함께 남기는 기록.'], story: ['이야기', '긴 이야기와 짧은 에피소드를 모아 둘 공간.'], log: ['기록', '새로 더한 그림과 페이지를 한눈에.'], guest: ['방명록', '가볍게 남기는 한 줄.'], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''] }[route]
   return <section className="inner-screen"><button className="back-link" onClick={e => navigate('home', e)}><ArrowLeft size={15} /> 홈으로</button><div className="page-heading"><div><span className="page-kicker">kirari <span>/</span> {navigation.find(n => n.id === route)?.label || '404'}</span><h1 tabIndex={-1}>{info[0]}<span>✦</span></h1><p>{info[1]}</p></div><span className="page-icon">{route === 'not-found' ? <Search size={28} /> : (() => { const Icon = icons[route]; return <Icon size={28} strokeWidth={1.5} /> })()}</span></div>
     {route === 'gallery' && <GalleryScreen query={query} setQuery={setQuery} />}
     {route === 'profile' && <div className="profile-page">{[{ name: '켄지', en: 'KENJI', src: art.kenji, color: 'blue', number: '01' }, { name: '키요', en: 'KIYO', src: art.kiyo, color: 'pink', number: '02' }].map(person => <article className={`profile-detail ${person.color}`} key={person.en}><div className="profile-detail-art"><span>{person.number}</span><img src={person.src} alt={person.name} /></div><div className="profile-detail-info"><span>{person.en}</span><h2>{person.name}<Heart size={20} /></h2><p>프로필을 채워 갈 공간이에요.<br />소개와 키워드는 다음 단계에서 추가할 수 있어요.</p><div className="tag-row"><span>#{person.name}</span><span>#kirari</span></div></div></article>)}</div>}
     {route === 'story' && <div className="story-empty"><div className="empty-illustration"><BookOpen size={56} strokeWidth={1} /><span>✧</span><img src={art.kiyoSD} alt="" /></div><h2>아직 펼치지 않은 이야기</h2><p>이야기가 등록되면 이곳에 모아 보여 드릴게요.</p><span className="category-tag">콘텐츠 준비 중</span></div>}
     {route === 'log' && <div className="log-list"><article><span className="log-dot" /><div className="log-date">미리보기</div><div><span className="category-tag">갤러리</span><h2>켄지와 키요의 그림 모음</h2><p>제공해 주신 일러스트 6장을 갤러리에서 볼 수 있어요.</p><button className="soft-button" onClick={e => navigate('gallery', e)}>갤러리 열기 <ArrowUpRight size={15} /></button></div><img src={art.pair} alt="" /></article><article><span className="log-dot pink" /><div className="log-date">준비 중</div><div><span className="category-tag">기록</span><h2>앞으로 쌓일 기록들</h2><p>실제 업데이트 기록은 다음 단계에서 연결합니다.</p></div></article></div>}
-    {route === 'guest' && <GuestScreen notes={notes} addNote={addNote} />}
+    {route === 'guest' && <GuestScreen guest={guest} admin={admin} />}
     {route === 'not-found' && <div className="empty-state"><span className="error-number">404</span><button className="primary-button" onClick={e => navigate('home', e)}>홈으로 돌아가기 <ArrowUpRight size={16} /></button></div>}
   </section>
 }
 
 export default function App() {
   const { host: musicHost, ...music } = useMusicPlayback()
-  const [guestNotes, setGuestNotes] = useState<string[]>([])
-  function addGuestNote(message: string) {
-    const note = message.trim().slice(0, 180)
-    if (note) setGuestNotes(previous => [note, ...previous].slice(0, 20))
-  }
+  const guest = useGuestbook()
   const [playEntrance, setPlayEntrance] = useState(true)
   const [route, setRoute] = useState<Route>(readRoute)
   const [theme, setTheme] = useState<Theme>('blue')
   const [settings, setSettings] = useState(false)
   const [admin, setAdmin] = useState(false)
+  const [writer, setWriter] = useState<MessageWriter | null>(null)
   const shared = useSiteSettings()
   const { setDraft } = shared
   const editing = admin && shared.draft !== null
@@ -186,8 +170,9 @@ export default function App() {
   const setDdays = (value: React.SetStateAction<DDay[]>) => changeDraft('ddays', value)
   const setHero = (value: 'portrait' | 'pair') => changeDraft('hero', value)
   const setFeather = (value: number) => changeDraft('feather', value)
-  const onAdminChange = useCallback((value: boolean) => {
+  const onAdminChange = useCallback((value: boolean, nextWriter: MessageWriter | null = null) => {
     setAdmin(value)
+    setWriter(nextWriter)
     if (!value) { setDraft(null); setSettings(false) }
   }, [setDraft])
   const [photoIndex, setPhotoIndex] = useState(() => Math.floor(Math.random() * gallery.length))
@@ -245,7 +230,7 @@ export default function App() {
     <a className="skip-link" href="#main">본문으로 건너뛰기</a>
     <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); navigate('gallery') }}><Search size={15} /><input aria-label="공개 그림 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav aria-label="메인 메뉴">{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => setTheme(t)} />)}</div>{admin && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" onClick={() => setSettings(!settings)}><SlidersHorizontal size={18} /></button>}</header>
     {shared.status && <p className="site-settings-status" role="status">{shared.status}</p>}
-    <div className="workspace"><aside className="side-rail" aria-label="바로가기">{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><main id="main" tabIndex={-1}>{route === 'home' ? <HomeScreen loading={shared.loading} draggable={!shared.saving} music={music} notes={guestNotes} addNote={addGuestNote} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen notes={guestNotes} addNote={addGuestNote} route={route} navigate={navigate} query={query} setQuery={setQuery} />}</main></div>
+    <div className="workspace"><aside className="side-rail" aria-label="바로가기">{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><main id="main" tabIndex={-1}>{route === 'home' ? <HomeScreen writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen admin={admin} guest={guest} route={route} navigate={navigate} query={query} setQuery={setQuery} />}</main></div>
     <footer><span><i /> kirari <span className="footer-divider">/</span> 켄지 & 키요</span><div className="admin-login-bar"><AdminLogin onAdminChange={onAdminChange} /></div></footer>
     {admin && settings && <div ref={settingsRef} className="settings-panel widget" id="appearance-settings">
       <WidgetTitle icon={<Palette size={16} />} action={<button className="bare" aria-label="설정 닫기" onClick={() => { setSettings(false); settingsToggle.current?.focus() }}><X size={16} /></button>}>화면 설정</WidgetTitle>

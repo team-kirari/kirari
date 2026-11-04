@@ -3,10 +3,12 @@ import type { Auth } from 'firebase/auth'
 import { getFirebaseConfig, isVerifiedGoogleIdentity, loginErrorMessage } from '../lib/auth'
 import type * as FirebaseLogin from '../lib/firebase'
 
+import type { MessageWriter } from '../lib/messages'
+
 type Status = 'checking' | 'guest' | 'member' | 'admin' | 'unavailable'
 type Connection = { auth: Auth, sdk: typeof FirebaseLogin }
 
-export function AdminLogin({ onAdminChange }: { onAdminChange: (admin: boolean) => void }) {
+export function AdminLogin({ onAdminChange }: { onAdminChange: (admin: boolean, writer?: MessageWriter | null) => void }) {
   const [status, setStatus] = useState<Status>('checking')
   const [connection, setConnection] = useState<Connection | null>(null)
   const [pending, setPending] = useState(false)
@@ -35,12 +37,12 @@ export function AdminLogin({ onAdminChange }: { onAdminChange: (admin: boolean) 
           const result = await identity.getIdTokenResult()
           if (!active || current !== revision) return
           if (isVerifiedGoogleIdentity(result.claims)) {
-            unsubscribeMembership = sdk.observeAdminAccess(auth, identity.uid, admin => {
+            unsubscribeMembership = sdk.observeAdminAccess(auth, identity.uid, (admin, writer) => {
               if (!active || current !== revision) return
               verifiedUid = admin ? identity.uid : null
               setStatus(admin ? 'admin' : 'member')
               setMessage(admin ? '' : '이 계정에는 관리자 권한이 없습니다.')
-              onAdminChange(admin)
+              onAdminChange(admin, writer)
             }, () => {
               if (!active || current !== revision) return
               verifiedUid = null

@@ -4,6 +4,8 @@ import { browserPopupRedirectResolver, browserSessionPersistence, GoogleAuthProv
 import type { Auth } from 'firebase/auth'
 import { doc, getFirestore, onSnapshot } from 'firebase/firestore'
 import { isActiveAdminRecord } from './auth'
+import { parseCharacter } from './messages'
+import type { MessageWriter } from './messages'
 
 let instance: Auth | undefined
 export function getFirebaseAuth(config: FirebaseOptions): Auth {
@@ -27,10 +29,12 @@ export function loginWithGoogle(auth: Auth) {
 export const observeIdentity = onIdTokenChanged
 export const logout = signOut
 
-export function observeAdminAccess(auth: Auth, uid: string, next: (admin: boolean) => void, fail: () => void) {
+export function observeAdminAccess(auth: Auth, uid: string, next: (admin: boolean, writer: MessageWriter | null) => void, fail: () => void) {
   return onSnapshot(doc(getFirestore(auth.app), 'admins', uid), { includeMetadataChanges: true }, snapshot => {
     // Only a server-confirmed membership may enable administrator controls.
     if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return
-    next(snapshot.exists() && isActiveAdminRecord(snapshot.data()))
+    const admin = snapshot.exists() && isActiveAdminRecord(snapshot.data())
+    const character = parseCharacter(snapshot.data()?.character)
+    next(admin, admin && character ? { uid, character } : null)
   }, fail)
 }

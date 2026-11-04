@@ -94,6 +94,14 @@ export function useWidgetDrag(positions: WidgetPositions, setPositions: Dispatch
     const target = event.target as HTMLElement
     const element = target.closest<HTMLElement>('[data-widget-id]')
     if (!element || target.closest('input, textarea, select, [contenteditable=true], [data-no-drag]') || !scene.current || event.button !== 0 || active.current) return
+    const scrollArea = target.closest<HTMLElement>('[data-widget-scroll]')
+    if (scrollArea) {
+      // Mouse drags move the widget; touch/pen gestures and scrollbar drags scroll.
+      const scrollBounds = scrollArea.getBoundingClientRect()
+      if (event.pointerType !== 'mouse'
+        || event.clientX < scrollBounds.left + scrollArea.clientLeft
+        || event.clientX >= scrollBounds.left + scrollArea.clientLeft + scrollArea.clientWidth) return
+    }
     suppressClick.current = false
     const bounds = scene.current.getBoundingClientRect()
     const rect = element.getBoundingClientRect()
