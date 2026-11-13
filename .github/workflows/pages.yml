@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  repository_dispatch:
+    types: [photos-updated]
 
 permissions:
   contents: read
@@ -15,6 +17,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check-photo-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: photo-pipeline/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: photo-pipeline
+      - run: npm test
+        working-directory: photo-pipeline
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -30,12 +48,29 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Check out approved public photo sources
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: team-kirari/kirari-private
+          ref: main
+          token: ${{ secrets.PRIVATE_ASSETS_READ_TOKEN }}
+          path: .local/kirari-private
+          persist-credentials: false
+      - name: Prepare synthetic photos for secret-free PR checks
+        if: github.event_name == 'pull_request'
+        run: node --experimental-strip-types scripts/prepare-photo-fixtures.mjs
       - name: Lint
         run: npm run lint
       - name: Check types
         run: npm run typecheck
       - name: Test
         run: npm test
+      - name: Check upload Worker bundle
+        run: npx wrangler deploy --dry-run --config worker/wrangler.jsonc --outdir .local/worker-bundle
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_LOG_PATH: .local/wrangler.log
       - name: Build public site
         run: npm run build
         env:
@@ -43,6 +78,7 @@ jobs:
           VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_PHOTO_UPLOAD_URL: ${{ vars.VITE_PHOTO_UPLOAD_URL }}
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
@@ -51,7 +87,7 @@ jobs:
 
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: build
+    needs: [build, check-photo-pipeline]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

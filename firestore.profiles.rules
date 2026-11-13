@@ -1,0 +1,71 @@
+// Profile rules only. Merge these matches/functions into the existing production
+// ruleset; do not replace rules for appearance, layout, likes, messages or guestbook.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function profileAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+    function profileNumber(value, minimum, maximum, integer) {
+      return value == '' || (value.matches(integer ? '^[0-9]+$' : '^[0-9]+([.][0-9])?$')
+        && float(value) >= minimum && float(value) <= maximum);
+    }
+    function profileValid(p) {
+      return p is map && p.keys().hasAll(['surname', 'name', 'originalName', 'gender', 'age', 'birthday', 'height', 'weight', 'quote', 'tags', 'color', 'appearance', 'impression', 'outfit', 'symbol', 'outside', 'inside', 'strengths', 'weaknesses', 'beliefs', 'goals', 'fears', 'speech', 'address', 'likes', 'dislikes']) && p.keys().hasOnly(['surname', 'name', 'originalName', 'gender', 'age', 'birthday', 'height', 'weight', 'quote', 'tags', 'color', 'appearance', 'impression', 'outfit', 'symbol', 'outside', 'inside', 'strengths', 'weaknesses', 'beliefs', 'goals', 'fears', 'speech', 'address', 'likes', 'dislikes'])
+          && p.surname is string && p.surname.size() <= 80
+          && p.name is string && p.name.size() <= 4000
+          && p.originalName is string && p.originalName.size() <= 4000
+          && p.gender is string && p.gender.size() <= 4000
+          && p.age is string && p.age.size() <= 80
+          && p.birthday is string && p.birthday.size() <= 4000
+          && p.height is string && p.height.size() <= 4000
+          && p.weight is string && p.weight.size() <= 4000
+          && p.quote is string && p.quote.size() <= 4000
+          && p.tags is string && p.tags.size() <= 4000
+          && p.color is string && p.color.size() <= 4000
+          && p.appearance is string && p.appearance.size() <= 4000
+          && p.impression is string && p.impression.size() <= 4000
+          && p.outfit is string && p.outfit.size() <= 4000
+          && p.symbol is string && p.symbol.size() <= 4000
+          && p.outside is string && p.outside.size() <= 4000
+          && p.inside is string && p.inside.size() <= 4000
+          && p.strengths is string && p.strengths.size() <= 4000
+          && p.weaknesses is string && p.weaknesses.size() <= 4000
+          && p.beliefs is string && p.beliefs.size() <= 4000
+          && p.goals is string && p.goals.size() <= 4000
+          && p.fears is string && p.fears.size() <= 4000
+          && p.speech is string && p.speech.size() <= 4000
+          && p.address is string && p.address.size() <= 4000
+          && p.likes is string && p.likes.size() <= 4000
+          && p.dislikes is string && p.dislikes.size() <= 4000
+          && p.name.size() > 0 && p.name.size() <= 80 && p.name.matches('.*[^ \t\r\n].*')
+          && p.color.matches('^#[0-9A-Fa-f]{6}$')
+          && p.speech in ['', '존댓말', '반말', '혼용']
+          && profileNumber(p.height, 1, 500, false)
+          && profileNumber(p.weight, 1, 500, false);
+    }
+    match /profiles/{person} {
+      allow get: if person in ['kenji', 'kiyo'];
+      allow create, update: if person in ['kenji', 'kiyo'] && profileAdmin()
+        && request.resource.data.keys().hasAll(['profile', 'revision'])
+        && request.resource.data.keys().hasOnly(['profile', 'revision', 'photoSelection'])
+        && (!('photoSelection' in request.resource.data) || (
+          request.resource.data.photoSelection is map
+          && request.resource.data.photoSelection.keys().hasAll(['old', 'new'])
+          && request.resource.data.photoSelection.keys().hasOnly(['old', 'new'])
+          && request.resource.data.photoSelection.old is map
+          && request.resource.data.photoSelection.new is map
+          && request.resource.data.photoSelection.old.values().hasOnly([true])
+          && request.resource.data.photoSelection.new.values().hasOnly([true])))
+        && profileValid(request.resource.data.profile)
+        && request.resource.data.revision is int
+        && request.resource.data.revision > 0 && request.resource.data.revision < 9007199254740991
+        && ((!exists(/databases/$(database)/documents/profiles/$(person)) && request.resource.data.revision == 1)
+          || (exists(/databases/$(database)/documents/profiles/$(person)) && request.resource.data.revision == resource.data.revision + 1));
+    }
+  }
+}

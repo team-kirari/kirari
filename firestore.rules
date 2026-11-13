@@ -1,0 +1,212 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function isAdmin() {
+      return verified() && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+    match /admins/{uid} {
+      allow get: if verified() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    function validGuestId(id) {
+      return id is string && id.matches('[a-zA-Z0-9]{20}');
+    }
+    match /guestbook/{noteId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 30;
+      allow create: if validGuestId(noteId)
+        && request.resource.data.keys().hasAll(['text', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['text', 'createdAt'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 180
+        && request.resource.data.text.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/guestbookState/posting).data.noteId == noteId
+        && getAfter(/databases/$(database)/documents/guestbookState/posting).data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+    match /guestbookState/posting {
+      allow get: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['noteId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['noteId', 'createdAt'])
+        && validGuestId(request.resource.data.noteId)
+        && request.resource.data.createdAt == request.time
+        && (!exists(/databases/$(database)/documents/guestbookState/posting)
+          || request.time >= resource.data.createdAt + duration.value(5, 's'))
+        && !exists(/databases/$(database)/documents/guestbook/$(request.resource.data.noteId))
+        && getAfter(/databases/$(database)/documents/guestbook/$(request.resource.data.noteId)).data.createdAt == request.time;
+    }
+    match /messages/{messageId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 30;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll(['character', 'text', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['character', 'text', 'createdAt'])
+        && request.resource.data.character in ['kenji', 'kiyo']
+        && request.resource.data.character == get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.character
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 180
+        && request.resource.data.text.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+    function validDay(day) {
+      let id = day.id;
+      let title = day.title;
+      let date = day.date;
+      return day.keys().hasOnly(['id', 'title', 'date'])
+        && id.matches('[a-zA-Z0-9-]{1,64}')
+        && title is string && title.size() <= 40
+        && (date == '' || (!date.matches('0000-.*') && (
+          date.matches('[0-9]{4}-((0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])|(0[469]|11)-(0[1-9]|[12][0-9]|30)|02-(0[1-9]|1[0-9]|2[0-8]))')
+          || date.matches('([0-9]{2}(0[48]|[2468][048]|[13579][26])|(0[48]|[2468][048]|[13579][26])00)-02-29')
+        )));
+    }
+    function validPosition(position) {
+      let id = position.id;
+      let x = position.x;
+      let y = position.y;
+      return position.keys().hasOnly(['id', 'x', 'y'])
+        && id in ['kenji', 'kiyo', 'date', 'dday', 'heart', 'messages', 'photo', 'player', 'story', 'guest']
+        && x >= -4000 && x <= 4000
+        && y >= -4000 && y <= 4000;
+    }
+    function validDays(items) {
+      let count = items.size();
+      return items is list && count <= 10
+        && (count <= 0 || (validDay(items[0])))
+        && (count <= 1 || (validDay(items[1])))
+        && (count <= 2 || (validDay(items[2])))
+        && (count <= 3 || (validDay(items[3])))
+        && (count <= 4 || (validDay(items[4])))
+        && (count <= 5 || (validDay(items[5])))
+        && (count <= 6 || (validDay(items[6])))
+        && (count <= 7 || (validDay(items[7])))
+        && (count <= 8 || (validDay(items[8])))
+        && (count <= 9 || (validDay(items[9])))
+        && [count > 0 ? items[0].id : null, count > 1 ? items[1].id : null, count > 2 ? items[2].id : null, count > 3 ? items[3].id : null, count > 4 ? items[4].id : null, count > 5 ? items[5].id : null, count > 6 ? items[6].id : null, count > 7 ? items[7].id : null, count > 8 ? items[8].id : null, count > 9 ? items[9].id : null].toSet().size() == count + (count < 10 ? 1 : 0)
+        ;
+    }
+    function validPositions(items) {
+      let count = items.size();
+      return items is list && count <= 10
+        && (count <= 0 || (validPosition(items[0])))
+        && (count <= 1 || (validPosition(items[1])))
+        && (count <= 2 || (validPosition(items[2])))
+        && (count <= 3 || (validPosition(items[3])))
+        && (count <= 4 || (validPosition(items[4])))
+        && (count <= 5 || (validPosition(items[5])))
+        && (count <= 6 || (validPosition(items[6])))
+        && (count <= 7 || (validPosition(items[7])))
+        && (count <= 8 || (validPosition(items[8])))
+        && (count <= 9 || (validPosition(items[9])))
+        && [count > 0 ? items[0].id : null, count > 1 ? items[1].id : null, count > 2 ? items[2].id : null, count > 3 ? items[3].id : null, count > 4 ? items[4].id : null, count > 5 ? items[5].id : null, count > 6 ? items[6].id : null, count > 7 ? items[7].id : null, count > 8 ? items[8].id : null, count > 9 ? items[9].id : null].toSet().size() == count + (count < 10 ? 1 : 0)
+        ;
+    }
+    function validRevision(data) {
+      return data.revision is int && data.revision >= 1 && data.revision <= 9007199254740991;
+    }
+    function nextRevision() {
+      return !exists(/databases/$(database)/documents/site/appearance)
+        ? request.resource.data.revision == 1
+        : request.resource.data.revision == get(/databases/$(database)/documents/site/appearance).data.revision + 1;
+    }
+    match /site/appearance {
+      allow get: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasAll(['hero', 'feather', 'ddays', 'revision'])
+        && request.resource.data.keys().hasOnly(['hero', 'feather', 'ddays', 'revision'])
+        && request.resource.data.hero in ['portrait', 'pair']
+        && request.resource.data.feather is int && request.resource.data.feather >= 0 && request.resource.data.feather <= 40
+        && validDays(request.resource.data.ddays) && validRevision(request.resource.data) && nextRevision()
+        && getAfter(/databases/$(database)/documents/site/layout).data.revision == request.resource.data.revision;
+    }
+    match /site/layout {
+      allow get: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasAll(['positions', 'revision'])
+        && request.resource.data.keys().hasOnly(['positions', 'revision'])
+        && validPositions(request.resource.data.positions) && validRevision(request.resource.data) && nextRevision()
+        && getAfter(/databases/$(database)/documents/site/appearance).data.revision == request.resource.data.revision;
+    }
+    match /counters/likes {
+      allow get: if true;
+      allow create: if request.resource.data.keys().hasOnly(['total']) && request.resource.data.total == 1;
+      allow update: if request.resource.data.keys().hasOnly(['total'])
+        && request.resource.data.total is int && request.resource.data.total <= 9007199254740991
+        && request.resource.data.total == resource.data.total + 1;
+    }
+
+    // Public profiles and administrator-selected illustration pools.
+    function profileAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+    function profileNumber(value, minimum, maximum, integer) {
+      return value == '' || (value.matches(integer ? '^[0-9]+$' : '^[0-9]+([.][0-9])?$')
+        && float(value) >= minimum && float(value) <= maximum);
+    }
+    function profileValid(p) {
+      return p is map && p.keys().hasAll(['surname', 'name', 'originalName', 'gender', 'age', 'birthday', 'height', 'weight', 'quote', 'tags', 'color', 'appearance', 'impression', 'outfit', 'symbol', 'outside', 'inside', 'strengths', 'weaknesses', 'beliefs', 'goals', 'fears', 'speech', 'address', 'likes', 'dislikes']) && p.keys().hasOnly(['surname', 'name', 'originalName', 'gender', 'age', 'birthday', 'height', 'weight', 'quote', 'tags', 'color', 'appearance', 'impression', 'outfit', 'symbol', 'outside', 'inside', 'strengths', 'weaknesses', 'beliefs', 'goals', 'fears', 'speech', 'address', 'likes', 'dislikes'])
+          && p.surname is string && p.surname.size() <= 80
+          && p.name is string && p.name.size() <= 4000
+          && p.originalName is string && p.originalName.size() <= 4000
+          && p.gender is string && p.gender.size() <= 4000
+          && p.age is string && p.age.size() <= 80
+          && p.birthday is string && p.birthday.size() <= 4000
+          && p.height is string && p.height.size() <= 4000
+          && p.weight is string && p.weight.size() <= 4000
+          && p.quote is string && p.quote.size() <= 4000
+          && p.tags is string && p.tags.size() <= 4000
+          && p.color is string && p.color.size() <= 4000
+          && p.appearance is string && p.appearance.size() <= 4000
+          && p.impression is string && p.impression.size() <= 4000
+          && p.outfit is string && p.outfit.size() <= 4000
+          && p.symbol is string && p.symbol.size() <= 4000
+          && p.outside is string && p.outside.size() <= 4000
+          && p.inside is string && p.inside.size() <= 4000
+          && p.strengths is string && p.strengths.size() <= 4000
+          && p.weaknesses is string && p.weaknesses.size() <= 4000
+          && p.beliefs is string && p.beliefs.size() <= 4000
+          && p.goals is string && p.goals.size() <= 4000
+          && p.fears is string && p.fears.size() <= 4000
+          && p.speech is string && p.speech.size() <= 4000
+          && p.address is string && p.address.size() <= 4000
+          && p.likes is string && p.likes.size() <= 4000
+          && p.dislikes is string && p.dislikes.size() <= 4000
+          && p.name.size() > 0 && p.name.size() <= 80 && p.name.matches('.*[^ \t\r\n].*')
+          && p.color.matches('^#[0-9A-Fa-f]{6}$')
+          && p.speech in ['', '존댓말', '반말', '혼용']
+          && profileNumber(p.height, 1, 500, false)
+          && profileNumber(p.weight, 1, 500, false);
+    }
+    match /profiles/{person} {
+      allow get: if person in ['kenji', 'kiyo'];
+      allow create, update: if person in ['kenji', 'kiyo'] && profileAdmin()
+        && request.resource.data.keys().hasAll(['profile', 'revision'])
+        && request.resource.data.keys().hasOnly(['profile', 'revision', 'photoSelection'])
+        && (!('photoSelection' in request.resource.data) || (
+          request.resource.data.photoSelection is map
+          && request.resource.data.photoSelection.keys().hasAll(['old', 'new'])
+          && request.resource.data.photoSelection.keys().hasOnly(['old', 'new'])
+          && request.resource.data.photoSelection.old is map
+          && request.resource.data.photoSelection.new is map
+          && request.resource.data.photoSelection.old.values().hasOnly([true])
+          && request.resource.data.photoSelection.new.values().hasOnly([true])))
+        && profileValid(request.resource.data.profile)
+        && request.resource.data.revision is int
+        && request.resource.data.revision > 0 && request.resource.data.revision < 9007199254740991
+        && ((!exists(/databases/$(database)/documents/profiles/$(person)) && request.resource.data.revision == 1)
+          || (exists(/databases/$(database)/documents/profiles/$(person)) && request.resource.data.revision == resource.data.revision + 1));
+    }
+  }
+}

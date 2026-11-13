@@ -1,0 +1,14 @@
+{
+  "name": "kirari-photo-pipeline",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
+  }
+}

@@ -396,3 +396,10 @@ footer > span { flex-shrink: 0; }
 .guest-feedback{font-size:11px;line-height:1.8;margin:12px 0;overflow-wrap:anywhere}
 .guest-delete{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:11px}
 .guest-form button:disabled{opacity:.5;cursor:default}
+
+.photo-upload-dialog { width: min(92vw, 520px); max-height: 85vh; overflow: auto; border: 1px solid #dce7f5; border-radius: 20px; padding: 24px; color: #526988; background: #f7f9fd; }
+.photo-upload-dialog::backdrop { background: #26344666; }
+.photo-upload-dialog fieldset { border: 0; padding: 0; display: grid; gap: 16px; }
+.photo-upload-dialog label { display: grid; gap: 6px; }
+.photo-upload-dialog input, .photo-upload-dialog select { max-width: 100%; padding: 10px; }
+.photo-upload-dialog p { font-size: 13px; line-height: 1.7; }

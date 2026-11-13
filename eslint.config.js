@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default tseslint.config(
-  { ignores: ['dist', '.wrangler', 'node_modules', 'example.html'] },
+  { ignores: ['dist', '**/.wrangler/**', '**/node_modules/**', '**/.local/**', 'example.html'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -18,4 +18,5 @@ export default tseslint.config(
     },
   },
   { files: ['**/*.mjs', 'eslint.config.js'], languageOptions: { globals: globals.node } },
+  { files: ['worker/**/*.mjs'], languageOptions: { globals: globals.worker } },
 )

@@ -1,0 +1,205 @@
+.character-dossier {
+  --character-color: #8BA5CB;
+  --character-soft: color-mix(in srgb, var(--character-color) 13%, white);
+  --character-line: color-mix(in srgb, var(--character-color) 35%, white);
+  --character-ink: color-mix(in srgb, var(--character-color) 55%, #27334b);
+  color: var(--character-ink);
+}
+.character-dossier[data-person=kiyo] { --character-color: #D8A4B9; }
+.dossier-main { position: relative; display: grid; grid-template-columns: minmax(0,1.35fr) minmax(280px,1fr); align-items: center; min-height: 610px; border: 1px solid var(--character-line); border-radius: 6px; background: #f9fbfd; overflow: hidden; isolation: isolate; }
+.entrance-color-sweep { position: absolute; inset: 0; z-index: -2; background: var(--character-color); clip-path: polygon(0 0,69% 0,46% 100%,0 100%); animation: color-sweep-in .6s cubic-bezier(.16,1,.3,1) both; }
+.entrance-color-sweep:after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(125deg,transparent 0 65px,#ffffff13 65px 66px); }
+.entrance-color-echo { position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb,var(--character-color) 25%,white); clip-path: polygon(71% 0,74% 0,51% 100%,48% 100%); animation: color-sweep-in .7s .05s cubic-bezier(.16,1,.3,1) both; }
+.entrance-stage { position: relative; grid-column: 1; grid-row: 1; align-self: stretch; min-height: 610px; min-width: 0; }
+.entrance-rail { position: absolute; left: 22px; top: 24px; bottom: 24px; width: 20px; border-block: 2px solid #ffffffb3; border-left: 1px solid #ffffff80; pointer-events: none; }
+.entrance-orbit { position: absolute; inset: 25px 0 0 14px; pointer-events: none; isolation: isolate; }
+.entrance-art { position: absolute; inset: 0; opacity: 0; visibility: hidden; pointer-events: none; transform-origin: 50% 100%; }
+.entrance-art.is-active.is-ready { visibility: visible; animation: character-enter .65s .12s cubic-bezier(.16,1,.3,1) both; }
+.entrance-orbit.has-switched:not(.is-orbiting) .entrance-art.is-active.is-ready { animation: none; opacity: 1; transform: none; }
+.entrance-orbit.is-orbiting .entrance-art.is-active { visibility: visible; animation: none; }
+.entrance-orbit.is-orbiting .entrance-art.is-departing { visibility: visible; animation: none; }
+.entrance-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
+.entrance-art-shadow { filter: brightness(0); opacity: .15; transform: translate(-15px,13px); }
+.entrance-art-image { filter: drop-shadow(9px 18px 6px #25304c40); }
+.entrance-art-footer { position: absolute; z-index: 3; left: 34px; right: 20px; bottom: 19px; display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
+.entrance-art-caption { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #26354a; font-size: 10px; }
+.entrance-art-caption > span[role=status] { width: 100%; }
+.entrance-art-caption .character-color-chip { border-color: #fff; outline-color: #ffffff90; }
+.dossier-main[data-person=kiyo] { --sweep-start: 105%; --character-start: 55px; --description-start: 14px; grid-template-columns: minmax(280px,1fr) minmax(0,1.35fr); }
+.dossier-main[data-person=kiyo] .entrance-stage { grid-column: 2; }
+.dossier-main[data-person=kiyo] .dossier-identity { grid-column: 1; margin: 30px 0 30px 26px; border-left-width: 1px; border-right: 3px solid var(--character-color); }
+.dossier-main[data-person=kiyo] .entrance-color-sweep { clip-path: polygon(31% 0,100% 0,100% 100%,54% 100%); }
+.dossier-main[data-person=kiyo] .entrance-color-echo { clip-path: polygon(26% 0,29% 0,52% 100%,49% 100%); }
+.dossier-main[data-person=kiyo] .entrance-rail { left: auto; right: 22px; border-left: 0; border-right: 1px solid #ffffff80; }
+.dossier-main[data-person=kiyo] .entrance-art-shadow { transform: translate(15px,13px); }
+.dossier-main[data-person=kiyo] .entrance-art-footer { left: 20px; right: 34px; align-items: flex-end; }
+.dossier-main[data-person=kiyo] .entrance-art-caption { justify-content: flex-end; text-align: right; }
+@keyframes color-sweep-in { from { transform: translateX(var(--sweep-start,-105%)); } to { transform: translateX(0); } }
+@keyframes character-enter { from { opacity: 0; transform: translateX(var(--character-start,-55px)); } to { opacity: 1; transform: translateX(0); } }
+.profile-photo-editor > p { font-size: 11px; line-height: 1.8; margin: 0 0 14px; }
+.profile-photo-editor > small { display: block; font-size: 10px; line-height: 1.9; margin-top: 12px; color: #6c7b90; }
+.profile-photo-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.profile-photo-tile { position: relative; padding: 8px; background: white; border: 1px solid #dfe6ef; border-radius: 8px; min-width: 0; }
+.profile-photo-tile img { width: 100%; height: 120px; object-fit: contain; background: repeating-conic-gradient(#f0f3f8 0 25%,white 0 50%) 0 0 / 16px 16px; }
+.profile-photo-tile > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; padding-top: 7px; }
+.profile-photo-tile > button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: white; box-shadow: 0 2px 8px #34496320; }
+.profile-photo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; font-size: 11px; }
+.profile-photo-upload { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border-radius: 8px; background: #e5ecf7; cursor: pointer; overflow: hidden; }
+.profile-photo-upload input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.profile-photo-upload:focus-within { outline: 3px solid #8ba5cb; outline-offset: 3px; }
+.profile-photo-status { font-size: 11px; line-height: 1.8; padding: 10px 13px; background: #edf2f9; border-radius: 7px; }
+.profile-photo-status.is-error { background: #fff0f1; color: #933e50; }
+.character-stage-shell { position: relative; padding-inline: 42px; margin-bottom: 24px; }
+.character-select { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.character-choice { position: absolute; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 34px; min-height: 61px; padding: 8px 3px; border: 1px solid var(--character-line); border-radius: 8px; background: white; color: var(--character-ink); pointer-events: auto; }
+.character-choice.choice-kenji { left: 0; }
+.character-choice.choice-kiyo { right: 0; }
+.character-choice > span { font-size: 9px; max-width: 100%; overflow-wrap: anywhere; }
+.character-choice[aria-pressed=true] { background: var(--character-soft); opacity: .55; }
+.character-choice:hover { background: var(--character-soft); opacity: 1; }
+.character-color-chip { width: 13px; height: 13px; background: var(--character-color); border: 2px solid white; outline: 1px solid var(--character-line); border-radius: 50%; }
+.dossier-identity { position: relative; grid-column: 2; grid-row: 1; z-index: 3; padding: 28px; margin: 30px 26px 30px 0; min-width: 0; border: 1px solid var(--character-line); border-left: 3px solid var(--character-color); border-radius: 4px; background: #fffffff0; box-shadow: 0 16px 40px #263a5315; animation: identity-arrive .55s .25s both; }
+.identity-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dossier-eyebrow { font-size: 9px; letter-spacing: 1px; }
+.identity-heading h2 { font-size: clamp(36px,4.5vw,58px); font-weight: 750; letter-spacing: -2px; margin: 10px 0 5px; overflow-wrap: anywhere; }
+.dossier-main[data-person=kenji] .identity-heading h2 { font-size: clamp(32px,4vw,50px); }
+.identity-surname, .identity-given-name { display: inline-block; max-width: 100%; vertical-align: top; }
+.identity-heading p { font-size: 14px; margin: 0; opacity: .8; }
+.dossier-edit-button { display: flex; align-items: center; gap: 5px; font-size: 10px; border: 1px solid var(--character-line); padding: 8px 10px; border-radius: 8px; background: var(--character-soft); white-space: nowrap; }
+.character-quote { position: relative; margin: 27px 0 16px; display: flex; align-items: flex-start; gap: 12px; background: var(--character-soft); border-radius: 3px 15px 15px 15px; padding: 18px; }
+.character-quote > svg { flex-shrink: 0; color: var(--character-color); }
+.character-quote p { margin: 0; font-size: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.character-quote > span { position: absolute; right: 12px; bottom: -7px; color: var(--character-color); opacity: .3; font-size: 50px; line-height: 1; }
+.dossier-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
+.dossier-tags > span { padding: 5px 9px; font-size: 10px; border: 1px solid var(--character-line); border-radius: 6px; overflow-wrap: anywhere; }
+.character-dossier .is-empty { color: #778294; }
+.identity-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); margin: 0; border-top: 1px solid #e8ecf2; }
+.identity-stats > div { padding: 15px 5px 8px 0; min-width: 0; }
+.identity-stats dt { font-size: 10px; color: #78869b; }
+.identity-stats dd { font-size: 13px; margin: 8px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.dossier-section-nav { display: flex; gap: 8px; margin-bottom: 22px; border-bottom: 1px solid #dfe6ef; padding-bottom: 12px; }
+.dossier-section-nav button { display: flex; align-items: center; gap: 9px; border-radius: 10px; background: none; padding: 11px 16px; font-size: 12px; }
+.dossier-section-nav button[aria-pressed=true] { background: var(--character-soft); box-shadow: inset 0 0 0 1px var(--character-line); }
+.dossier-details { min-height: 320px; animation: details-arrive .45s ease-out both; }
+.personality-layout { display: grid; grid-template-columns: minmax(0,346px) minmax(0,1fr); gap: 28px; align-items: start; }
+.personality-card { display: grid; grid-template-columns: 30px minmax(0,1fr) 30px; gap: 8px; width: 100%; max-width: 346px; min-width: 0; align-items: center; }
+.personality-card-perspective { position: relative; perspective: 1300px; display: grid; grid-column: 2; grid-row: 1; align-self: stretch; }
+.personality-card-perspective:after { content: ''; position: absolute; left: 8%; right: 8%; bottom: -17px; height: 22px; border-radius: 50%; background: radial-gradient(ellipse,#283a5140,transparent 70%); opacity: .45; pointer-events: none; transform: scaleX(.9); }
+.personality-card-hover { display: grid; transform-style: preserve-3d; transform-origin: center; transition: transform .3s cubic-bezier(.22,.8,.25,1); }
+.personality-card-turner { display: grid; width: 100%; aspect-ratio: 9 / 16; min-height: 480px; transform-style: preserve-3d; }
+.personality-card.is-flipping .personality-card-perspective:after { animation: card-landing-shadow .56s linear; }
+.personality-card.is-flipping .personality-card-hover { transform: none; transition-duration: .14s; }
+@media (hover: hover) and (pointer: fine) {
+  .personality-card[data-hover-ready=true]:not(.is-flipping):hover .personality-card-hover { transform: translateZ(-18px) rotateY(var(--card-press-angle,0deg)); }
+}
+@keyframes card-landing-shadow {
+  0%,100% { opacity: .45; transform: scaleX(.9); }
+  18% { opacity: .26; transform: scaleX(1.12); }
+  36% { opacity: .18; transform: scaleX(1.25); }
+  72% { opacity: .45; transform: scaleX(.9); }
+}
+.personality-card-face { position: relative; grid-area: 1 / 1; min-width: 0; padding: 23px; border: 1px solid var(--character-line); border-radius: 17px; background: linear-gradient(155deg,white 30%,var(--character-soft)); box-shadow: 4px 6px 0 var(--character-soft),0 15px 25px #34496314; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.personality-card-face:before { content: ''; position: absolute; inset: 9px; border: 1px solid var(--character-line); border-radius: 11px; pointer-events: none; opacity: .55; }
+.personality-card-face.card-back { transform: rotateY(180deg); background: linear-gradient(155deg,var(--character-soft),white 130%); }
+.personality-card-face h3 { text-align: center; font-size: 29px; font-weight: 650; letter-spacing: 3px; margin: 24px 0 0; }
+.personality-card-face p { border-top: 1px solid var(--character-line); padding-top: 20px; font-size: 13px; line-height: 2; margin: 28px 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.personality-flip-button { display: grid; place-items: center; width: 30px; height: 44px; padding: 0; border: 1px solid var(--character-line); border-radius: 10px; background: var(--character-soft); z-index: 1; grid-row: 1; }
+.personality-flip-button.flip-left { grid-column: 1; }
+.personality-flip-button.flip-right { grid-column: 3; }
+.personality-flip-button:hover { background: white; box-shadow: 0 3px 12px #34496312; }
+.personality-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 24px; margin: 0; }
+.dossier-entry { padding: 20px 3px; min-width: 0; border-bottom: 1px solid #e4eaf2; }
+.dossier-entry dt { color: var(--character-ink); font-size: 11px; font-weight: 650; }
+.dossier-entry dd { margin: 10px 0 0; font-size: 12px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.belief-entry { grid-column: 1 / -1; display: flex; gap: 17px; align-items: center; padding: 3px 20px; background: var(--character-soft); border: 1px solid var(--character-line); border-radius: 12px; margin: 0 0 15px; }
+.belief-entry > svg { flex-shrink: 0; color: var(--character-color); }
+.belief-entry .dossier-entry { border: 0; }
+.appearance-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+.outfit-image { background: var(--character-soft); border: 1px solid var(--character-line); border-radius: 17px; height: 310px; padding: 20px; }
+.outfit-empty { display: grid; place-items: center; min-height: 310px; margin: 0; padding: 24px; border: 1px dashed var(--character-line); border-radius: 17px; font-size: 12px; text-align: center; }
+.outfit-image > img { width: 100%; height: 100%; object-fit: contain; }
+.outfit-thumbnails { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.outfit-thumbnails button { width: 52px; height: 55px; border-radius: 8px; background: #fff; padding: 4px; border: 1px solid #dfe6ef; }
+.outfit-thumbnails button[aria-pressed=true] { border: 2px solid var(--character-ink); background: var(--character-soft); }
+.outfit-thumbnails img { height: 100%; width: 100%; object-fit: contain; }
+.outfit-thumbnails > span { margin-left: auto; font-size: 9px; color: #778294; }
+.appearance-entries { margin: 0; }
+.appearance-entries .dossier-entry:first-child { padding-top: 5px; }
+.preferences-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 30px; margin: 0; }
+.dossier-editor { position: fixed; inset: 0; margin: auto; width: min(740px,calc(100vw - 28px)); max-height: 88svh; overflow-y: auto; border: 1px solid #dfe6ef; border-radius: 23px; padding: 28px; background: #f8fafd; color: #526685; box-shadow: 0 25px 90px #33445b3b; }
+.illustration-version-switch { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; border: 1px solid var(--character-line); border-radius: 20px; background: #fffffff2; color: var(--character-ink); box-shadow: 0 3px 12px #25304c10; font-size: 10px; }
+.illustration-version-switch:focus-visible { outline: 2px solid var(--character-ink); outline-offset: 2px; }
+.illustration-version-switch:disabled { cursor: progress; }
+.dossier-editor::backdrop { background: #33445b80; backdrop-filter: blur(7px); }
+.dossier-editor header { display: flex; justify-content: space-between; align-items: center; }
+.dossier-editor header small { font-size: 10px; }
+.dossier-editor h2 { margin: 8px 0; font-size: 24px; }
+.dossier-editor-notice { background: #edf2f9; padding: 12px 14px; border-radius: 10px; font-size: 11px; line-height: 1.8; }
+.dossier-editor fieldset { border: 0; border-top: 1px solid #dfe6ef; padding: 18px 0; margin: 22px 0 0; min-width: 0; }
+.dossier-editor legend { padding-right: 14px; font-size: 13px; font-weight: 650; }
+.dossier-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.dossier-edit-grid label { display: grid; gap: 7px; font-size: 11px; min-width: 0; }
+.dossier-edit-grid label.wide { grid-column: 1 / -1; }
+.dossier-edit-grid :is(input,textarea,select) { width: 100%; border: 1px solid #dfe6ef; border-radius: 8px; padding: 10px; color: #435771; background: white; font: inherit; line-height: 1.7; }
+.dossier-edit-grid textarea { resize: vertical; }
+.dossier-editor-actions { display: flex; gap: 10px; justify-content: flex-end; padding-top: 15px; }
+[data-theme=monochrome] .character-dossier { --character-color: #888 !important; }
+.identity-color { display: flex; align-items: center; gap: 8px; border-top: 1px solid #e8ecf2; padding-top: 16px; margin-top: 16px; font-size: 10px; }
+.identity-color code { margin-left: auto; }
+.character-dossier [aria-disabled=true] { cursor: progress; }
+@keyframes identity-arrive { from { opacity: 0; transform: translateX(var(--description-start,-14px)); } to { opacity: 1; transform: translateX(0); } }
+@keyframes details-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 1150px) {
+  .identity-heading { flex-wrap: wrap; }
+}
+@media (max-width: 850px) {
+  .dossier-main[data-person=kiyo] { grid-template-columns: minmax(245px,1fr) minmax(0,1fr); }
+  .dossier-main[data-person=kiyo] .dossier-identity { margin-left: 18px; }
+  .dossier-main { grid-template-columns: minmax(0,1fr) minmax(245px,1fr); min-height: 530px; }
+  .entrance-stage { min-height: 530px; }
+  .dossier-identity { padding: 20px; margin-right: 18px; }
+  .personality-layout { grid-template-columns: minmax(0,306px) minmax(0,1fr); gap: 18px; }
+  .personality-grid { grid-template-columns: 1fr; }
+  .personality-card-face { padding: 21px; }
+  .identity-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .character-quote { padding: 13px; margin-top: 20px; }
+}
+@media (max-width: 650px) {
+  .character-stage-shell { padding-inline: 32px; }
+  .character-choice { width: 27px; min-height: 54px; }
+  .dossier-main[data-person=kiyo] { grid-template-columns: 1fr; }
+  .dossier-main[data-person=kiyo] .entrance-stage { grid-column: 1; }
+  .dossier-main[data-person=kiyo] .dossier-identity { grid-column: 1; grid-row: 2; margin: 0 16px 23px; }
+  .dossier-main[data-person=kiyo] .entrance-color-sweep { clip-path: polygon(0 0,100% 0,100% 75%,0 55%); }
+  .dossier-main[data-person=kiyo] .entrance-color-echo { clip-path: polygon(0 57%,100% 77%,100% 79%,0 59%); }
+  .dossier-main { grid-template-columns: 1fr; }
+  .entrance-stage { grid-column: 1; grid-row: 1; height: clamp(370px,105vw,510px); min-height: 0; }
+  .entrance-color-sweep { clip-path: polygon(0 0,100% 0,100% 55%,0 75%); }
+  .entrance-color-echo { clip-path: polygon(0 77%,100% 57%,100% 59%,0 79%); }
+  .dossier-identity { grid-column: 1; grid-row: 2; margin: 0 16px 23px; padding: 23px; }
+  .entrance-orbit { inset: 18px 15px 0; }
+  .profile-photo-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .identity-heading { flex-wrap: nowrap; }
+  .identity-stats { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .dossier-section-nav { gap: 3px; }
+  .dossier-section-nav button { flex: 1; justify-content: center; padding: 10px 7px; gap: 6px; font-size: 11px; }
+  .personality-layout { grid-template-columns: 1fr; gap: 23px; }
+  .personality-card { justify-self: center; }
+  .personality-grid { grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .appearance-layout { grid-template-columns: 1fr; gap: 22px; }
+  .preferences-grid { column-gap: 17px; }
+  .dossier-edit-grid { grid-template-columns: 1fr; }
+  .dossier-editor { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .character-dossier *, .character-dossier *:before, .character-dossier *:after { animation: none !important; transition: none !important; }
+  .personality-card .personality-card-hover { transform: none !important; }
+  .entrance-art.is-active.is-ready { opacity: 1; visibility: visible; transform: none; }
+  .entrance-orbit.is-orbiting .entrance-art.is-departing { opacity: 0; visibility: hidden; }
+}
+
+.profile-photo-option { display: block; cursor: pointer; }
+.profile-photo-option:has(input:checked) { border-color: var(--character-color,#8ba5cb); background: #edf2f9; }
+.profile-photo-option .profile-photo-check { display: flex; align-items: center; gap: 7px; white-space: normal; }
+.profile-photo-option input { accent-color: #526685; }
+.profile-photo-editor .profile-photo-grid { margin-top: 12px; }

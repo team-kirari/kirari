@@ -1,0 +1,52 @@
+name: Publish photos to Kirari
+on:
+  push:
+    branches: [main]
+    paths: ['assets/**', 'staging/**']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publish-photos
+  cancel-in-progress: false
+jobs:
+  notify:
+    if: vars.PHOTO_PIPELINE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out private photos
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: photos
+      - name: Check out trusted public image validator
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: team-kirari/kirari
+          ref: main
+          path: site
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: site/.node-version
+      - run: npm ci --ignore-scripts
+        working-directory: site/photo-pipeline
+      - name: Decode staged photos and strip metadata before publication
+        working-directory: photos
+        run: node ../site/photo-pipeline/process-staged.mjs .
+      - name: Commit validated photos
+        working-directory: photos
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- assets staging
+          if ! git diff --cached --quiet; then
+            git commit -m "Validate staged public photos"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Request public site rebuild
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_SITE_DISPATCH_TOKEN }}
+        run: |
+          gh api --method POST repos/team-kirari/kirari/dispatches -f event_type=photos-updated
