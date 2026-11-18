@@ -61,8 +61,10 @@ test('local stories round-trip, Korean password hashes stay private, revisions p
   const file = await readFile(join(root, 'stories', `${story.id}.json`), 'utf8')
   assert.equal(file.includes(koreanPassword), false)
   assert.equal('passwordHash' in story, false)
-  assert.equal((await store.list())[0].title, '비밀번호로 보호된 이야기')
+  assert.equal((await store.list())[0].title, draft.title)
   assert.equal((await store.list())[0].author, '')
+  const summary = (await store.list())[0]
+  for (const field of ['body', 'passwordHash', 'password']) assert.equal(field in summary, false)
   await assert.rejects(store.get(story.id), { status: 404 })
   await assert.rejects(store.get(story.id, '틀린암호'), { status: 404 })
   assert.equal((await store.get(story.id, koreanPassword)).body, draft.body)

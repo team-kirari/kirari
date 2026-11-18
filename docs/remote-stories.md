@@ -46,7 +46,7 @@ Google 로그인에서 `auth/unauthorized-domain` 오류가 나면 Firebase Cons
 ## 공개·비밀번호·작성자
 
 - 비밀번호가 없는 글은 누구나 목록·본문을 읽습니다. 저장 안내에서 공개 범위를 설명하며 실제 공개할 글만 저장합니다.
-- 비밀번호가 있는 글은 제목·작가명을 목록에서 숨기고 서버에서 확인한 뒤 본문을 반환합니다. 한글을 포함한 글자 수 제한이 없으며 무작위 salt와 PBKDF2-SHA256 100,000회로 저장합니다. 원문 비밀번호·해시는 응답에 포함하지 않습니다. 브라우저 영구 저장소에 글·비밀번호를 저장하지 않습니다.
+- 비밀번호가 있는 글은 목록에서 제목은 보여 주고 작가명은 숨기며 서버에서 확인한 뒤 본문을 반환합니다. 한글을 포함한 글자 수 제한이 없으며 무작위 salt와 PBKDF2-SHA256 100,000회로 저장합니다. 원문 비밀번호·해시는 응답에 포함하지 않습니다. 브라우저 영구 저장소에 글·비밀번호를 저장하지 않습니다.
 - 작성·수정 요청마다 Firebase의 계정 조회와 해당 프로젝트 Firestore 규칙을 통해 활성 Google 관리자를 확인합니다. 수정·편집용 비밀번호 우회는 저장된 작성자 UID가 일치할 때만 허용합니다. 다른 관리자는 수정하거나 보호 글을 우회 열람할 수 없습니다.
 - 저장소 관리자는 원문과 해시에 접근할 수 있습니다. 암호화 저장이나 작성자만 볼 수 있는 `private` 자료 기능은 아닙니다. `shared/private` 선택, 검색·첨부·삭제 API는 제공하지 않습니다.
 - 글 본문의 100,000자 제한은 제거했습니다. 요청 본문 500KB와 전체 저장 **100개·UTF-8 JSON 900KB**의 용량 제한은 유지합니다. 초과하면 저장을 거부하고 입력 내용은 유지합니다. 규모 확장에는 인덱스·글 분리와 원자적 커밋 설계가 필요합니다.
@@ -60,7 +60,7 @@ Google 로그인에서 `auth/unauthorized-domain` 오류가 나면 Firebase Cons
 
 1. 관리자로 로그인 → 새 글 → 저장: ‘GitHub 원격 저장소에 저장했어요’가 표시되고 private 저장소에 커밋이 생겨야 합니다. 다른 브라우저에서 새로고침하면 보여야 합니다.
 2. 비로그인·일반 회원은 작성할 수 없어야 합니다. 관리자 B는 A의 수정 버튼이 보이지 않고 직접 편집 요청도 거부되어야 합니다.
-3. 비밀번호 글은 제목·작가명이 숨겨지고 틀린 암호로 열리지 않아야 합니다. 올바른 암호는 한글도 동작해야 합니다.
+3. 비밀번호 글은 제목은 보이고 작가명은 숨겨지며 틀린 암호로 열리지 않아야 합니다. 올바른 암호는 한글도 동작해야 합니다.
 4. 다른 탭에서 같은 글을 수정하면 오래된 편집의 저장은 충돌로 거부되어야 합니다. 연결 차단이나 토큰 만료 시 완료로 표시되지 않고 입력이 유지되어야 합니다.
 
 공식 근거: [GitHub Contents API](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents), [Firebase 계정 조회](https://firebase.google.com/docs/reference/rest/auth#section-get-account-info), [Firestore REST의 Firebase ID 토큰·규칙](https://firebase.google.com/docs/firestore/use-rest-api), [Workers Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/). 확인일: 2026-11-18.

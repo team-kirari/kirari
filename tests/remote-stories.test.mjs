@@ -68,9 +68,10 @@ test('owner controls edit; password applies to guests, other admins, every read 
   const f = fixture(), password = '한글합성시험비밀번호'
   const saved = await (await f.request('', { ...draft, password }, 'A')).json()
   const list = await (await f.request()).json()
-  assert.equal(list[0].title, '비밀번호로 보호된 이야기')
+  assert.equal(list[0].title, draft.title)
   assert.equal(list[0].author, '')
   assert.equal(list[0].editable, false)
+  for (const field of ['body', 'passwordHash', 'password']) assert.equal(field in list[0], false)
   for (const role of [undefined, 'A', 'B']) {
     assert.equal((await f.request(`/${saved.id}`, undefined, role)).status, 404)
     assert.equal((await f.request(`/${saved.id}/unlock`, { password: 'wrong' }, role)).status, 404)

@@ -403,3 +403,14 @@ footer > span { flex-shrink: 0; }
 .photo-upload-dialog label { display: grid; gap: 6px; }
 .photo-upload-dialog input, .photo-upload-dialog select { max-width: 100%; padding: 10px; }
 .photo-upload-dialog p { font-size: 13px; line-height: 1.7; }
+
+.confirmation-dialog{width:min(420px,calc(100vw - 32px));max-height:85dvh;overflow:auto;margin:auto;padding:28px;border:1px solid var(--pale);border-radius:20px;background:var(--page-bg);color:var(--ink);box-shadow:0 20px 80px #26344633}
+.confirmation-dialog::backdrop{background:#26344666}
+.confirmation-dialog p{font-size:14px;line-height:1.8;margin:0 0 24px;overflow-wrap:anywhere}
+.confirmation-dialog form{display:flex;justify-content:flex-end;gap:10px}
+:is(dialog[open],.settings-panel,[popover]:popover-open){animation:popup-boing .48s ease-out both;transform-origin:center}
+dialog[open]::backdrop{animation:popup-backdrop .2s ease-out both}
+.settings-panel{transform-origin:top right}
+@keyframes popup-boing{0%{opacity:0;transform:translateY(16px) scale(.88)}55%{opacity:1;transform:translateY(-3px) scale(1.035)}78%{transform:translateY(1px) scale(.99)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes popup-backdrop{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){:is(dialog[open],.settings-panel,[popover]:popover-open){animation:none}dialog[open]::backdrop{animation:none}}

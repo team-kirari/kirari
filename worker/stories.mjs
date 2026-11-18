@@ -96,7 +96,7 @@ export async function handleStories(request, env, fetcher = fetch) {
     }
     const { items, sha } = await read()
     if (request.method === 'GET') {
-      if (!id) return reply(200, items.map(story => ({ id: story.id, title: story.passwordHash ? '비밀번호로 보호된 이야기' : story.title, author: story.passwordHash ? '' : story.author, createdAt: story.createdAt, ...(story.writtenOn ? { writtenOn: story.writtenOn } : {}), updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid })).sort(compareStories))
+      if (!id) return reply(200, items.map(story => ({ id: story.id, title: story.title, author: story.passwordHash ? '' : story.author, createdAt: story.createdAt, ...(story.writtenOn ? { writtenOn: story.writtenOn } : {}), updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid })).sort(compareStories))
       const story = items.find(item => item.id === id)
       if (!story || action === 'unlock' || (action === 'edit' ? story.owner !== uid : story.passwordHash !== null)) throw denied()
       return reply(200, present(story, uid))

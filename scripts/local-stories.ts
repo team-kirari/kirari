@@ -56,7 +56,7 @@ export function createLocalStoryStore(repo: string) {
       const items = []
       for (const name of names) {
         const data = await read(name.slice(0, -5))
-        items.push({ id: data.id, title: data.passwordHash ? '비밀번호로 보호된 이야기' : data.title, author: data.passwordHash ? '' : data.author, createdAt: data.createdAt, updatedAt: data.updatedAt, ...(data.writtenOn ? { writtenOn: data.writtenOn } : {}), protected: data.passwordHash !== null })
+        items.push({ id: data.id, title: data.title, author: data.passwordHash ? '' : data.author, createdAt: data.createdAt, updatedAt: data.updatedAt, ...(data.writtenOn ? { writtenOn: data.writtenOn } : {}), protected: data.passwordHash !== null })
       }
       return items.sort(compareStories)
     },
