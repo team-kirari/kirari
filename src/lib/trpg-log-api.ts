@@ -2,7 +2,7 @@ import { getFirebaseConfig } from './auth'
 import { parseStoryDraft } from './stories'
 import type { Story } from './stories'
 import { parseTrpgLog } from './trpg-logs'
-import { readTrpgLogResponse } from './trpg-log-response'
+import { fetchTrpgLogResponse, readTrpgLogResponse } from './trpg-log-response'
 import { compareLogs, validLogMetadata } from './trpg-log-summary'
 import type { LogSummary } from './trpg-log-summary'
 
@@ -31,7 +31,7 @@ async function request(path: string, body?: unknown, admin = false): Promise<unk
     if (!auth.currentUser) throw new Error('관리자 로그인이 필요해요.')
     headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`
   }
-  const response = await fetch(`${endpoint()}${path}`, { method: body === undefined ? 'GET' : 'POST',
+  const response = await fetchTrpgLogResponse(`${endpoint()}${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { ...headers, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(60_000) })
   return readTrpgLogResponse(response, path === '' && body === undefined, path.endsWith('/unlock'))

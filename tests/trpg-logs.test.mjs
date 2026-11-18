@@ -4,12 +4,12 @@ import { randomUUID } from 'node:crypto'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { logIdFromHash, parseTrpgLog, validateLogFile, logMediaUrl } from '../src/lib/trpg-logs.ts'
+import { logIdFromHash, parseTrpgLog, parseTrpgReplay, validateLogFile, logMediaUrl } from '../src/lib/trpg-logs.ts'
 import { createLocalStoryStore } from '../scripts/local-stories.ts'
 import { handleTrpgLogs } from '../worker/stories.mjs'
-import { readTrpgLogResponse } from '../src/lib/trpg-log-response.ts'
+import { fetchTrpgLogResponse, readTrpgLogResponse } from '../src/lib/trpg-log-response.ts'
 import { compareLogs, metadataFromLog, validLogMetadata } from '../src/lib/trpg-log-summary.ts'
-import { buildLogIndex, validLogIndex } from '../worker/log-index.mjs'
+import { buildLogIndex, decodeLogBase64, validLogIndex } from '../worker/log-index.mjs'
 
 const replay = overrides => ({ format: 'rollscene-studio-project-v1', assets: {}, messages: [{ speaker: '합성 화자', body: '합성 대사' }, { speaker: 'Narrator', body: '다음 장면' }], events: [], ...overrides })
 const html = data => `<html><script>throw new Error('must never run'); const B64='${Buffer.from(JSON.stringify(data)).toString('base64')}';</script></html>`
@@ -26,6 +26,32 @@ test('missing collection is empty while password failures and server errors rema
 test('unlock translates previous server denial messages into a clear password error only for unlock', async () => {
   await assert.rejects(readTrpgLogResponse(new Response(JSON.stringify({ error: '글을 열 수 없어요.' }), { status: 404 }), false, true), { message: '비밀번호가 다릅니다.' })
   await assert.rejects(readTrpgLogResponse(new Response(JSON.stringify({ error: '서버 오류' }), { status: 502 }), false, true), { message: '서버 오류' })
+})
+
+test('network failures, timeouts and non-JSON platform errors explain the failure without discarding input', async () => {
+  const failed = async () => { throw new TypeError('Failed to fetch') }
+  await assert.rejects(fetchTrpgLogResponse('https://example.invalid', {}, failed), /로그 서버와 통신하지 못했어요.*입력 내용은 유지/)
+  const timeout = async () => { throw new DOMException('timeout', 'TimeoutError') }
+  await assert.rejects(fetchTrpgLogResponse('https://example.invalid', {}, timeout), /시간이 초과.*입력 내용은 유지/)
+  await assert.rejects(readTrpgLogResponse(new Response('<html>platform error</html>', { status: 503 })), /503.*입력 내용은 유지/)
+  await assert.rejects(readTrpgLogResponse(new Response('broken')), /응답 형식/)
+})
+
+test('server validation rejects malformed replay data without generating playback state', () => {
+  const parsed = parseTrpgReplay(source, decodeLogBase64)
+  assert.equal(parsed.format, 'rollscene-studio-project-v1')
+  assert.equal(Object.hasOwn(parsed.messages[0], 'scene'), false)
+  const cases = [
+    { messages: [null] }, { messages: [{ speaker: {} }] }, { messages: [{ tab: 1 }] },
+    { messages: [{ content: [{ text: 1 }] }] }, { messages: [{ narration: 'yes' }] },
+    { events: [{ layer: 'background', position: -1, sequence: 0 }] },
+    { events: [{ layer: 'fieldObjects', position: 0, sequence: 0, objects: [null] }] },
+    { events: [{ layer: 'bgm', position: 0, sequence: 0, volume: 'loud' }] },
+    { settings: { showFieldObjects: 'yes' } }, { tabVisibility: { main: 1 } },
+  ]
+  let nodes = ['synthetic']; for (let i = 0; i < 32; i++) nodes = [{ children: nodes }]
+  cases.push({ messages: [{ content: nodes }] })
+  for (const value of cases) assert.throws(() => parseTrpgReplay(html(replay(value)), decodeLogBase64))
 })
 
 test('only portable cinematic exports are accepted; HTML scripts never execute', () => {
@@ -59,7 +85,7 @@ test('media URLs have exact HTTPS host boundaries and never expose private repo 
   assert.equal(logMediaUrl('asset:portrait', { portrait: { src: 'https://files.d20.io/portrait.png' } }), 'https://files.d20.io/portrait.png')
 })
 
-test('log deletion checks owner and revision, removes archive and index, and blocks future reads', async () => {
+test('log deletion checks owner and revision, removes the individual file and index, and blocks future reads', async () => {
   const f = fixture()
   const input = draft()
   assert.equal((await f.request('', input, 'A')).status, 200)
@@ -72,6 +98,7 @@ test('log deletion checks owner and revision, removes archive and index, and blo
   assert.equal(f.writes(), 1)
   assert.equal((await f.request(path, { revision: 1 }, 'A')).status, 200)
   assert.deepEqual(f.archive(), [])
+  assert.equal(f.files.size, 0)
   assert.deepEqual(await (await f.request()).json(), [])
   assert.equal((await f.request(`/${input.id}/unlock`, { password: input.password })).status, 404)
   assert.equal((await f.request(`/${input.id}/edit`, undefined, 'A')).status, 404)
@@ -101,6 +128,8 @@ test('local log deletion rejects stale revisions and removes only the requested 
 
 function fixture() {
   let archive = null, index = null, version = 1, tree, commit, conflict = false, writes = 0, archiveReads = 0
+  const files = new Map(), blobs = new Map(), reads = []
+  const active = () => (index ?? []).map(item => item.storage === 'file' ? files.get(`web-trpg-logs/entries/${item.id}.json`) : archive.find(log => log.id === item.id))
   const sha = value => String(value).padStart(40, '0')
   const json = (value, status = 200) => new Response(JSON.stringify(value), { status })
   const env = { STORY_GITHUB_WRITE_TOKEN: 'fake-github-secret', FIREBASE_API_KEY: 'fake-key', FIREBASE_PROJECT_ID: 'fake-project', STORY_LIMITER: { limit: async () => ({ success: true }) } }
@@ -112,27 +141,121 @@ function fixture() {
     const body = options.body && JSON.parse(options.body)
     if (path.startsWith('/contents/')) {
       assert.ok(path.startsWith('/contents/web-trpg-logs/'))
+      reads.push(path)
       if (path.includes('archive.json')) archiveReads++
-      const value = path.includes('archive.json') ? archive : index
-      if (value === null) return json({}, 404)
+      const name = path.slice('/contents/'.length).split('?')[0]
+      const value = name.endsWith('/archive.json') ? archive : name.endsWith('/index.json') ? index : files.get(name)
+      if (value == null) return json({}, 404)
       assert.equal(options.headers.Accept, 'application/vnd.github.raw+json')
       return json(value)
     }
     if (path === '/git/ref/heads/main') return json({ object: { type: 'commit', sha: sha(version) } })
     if (path === `/git/commits/${sha(version)}`) return json({ tree: { sha: sha(version) } })
-    if (path === '/git/trees') { tree = body.tree; assert.equal(body.base_tree, sha(version)); assert.deepEqual(tree.map(file => file.path), ['web-trpg-logs/archive.json', 'web-trpg-logs/index.json']); return json({ sha: sha(1001) }) }
+    if (path === '/git/blobs') {
+      assert.equal(body.encoding, 'utf-8')
+      const hash = sha(2000 + blobs.size)
+      blobs.set(hash, JSON.parse(body.content))
+      return json({ sha: hash })
+    }
+    if (path === '/git/trees') {
+      tree = body.tree; assert.equal(body.base_tree, sha(version))
+      assert.ok(tree.every(file => file.path !== 'web-trpg-logs/archive.json'))
+      assert.equal(tree.at(-1).path, 'web-trpg-logs/index.json')
+      return json({ sha: sha(1001) })
+    }
     if (path === '/git/commits') { commit = body; return json({ sha: sha(1002) }) }
     if (path === '/git/refs/heads/main') {
       assert.equal(body.force, false)
       if (conflict || commit.parents[0] !== sha(version)) return json({}, 422)
-      archive = JSON.parse(tree[0].content); index = JSON.parse(tree[1].content); version++; writes++
+      for (const file of tree) {
+        if (file.path.endsWith('/index.json')) index = JSON.parse(file.content)
+        else if (file.sha === null) files.delete(file.path)
+        else { assert.ok(blobs.has(file.sha)); files.set(file.path, blobs.get(file.sha)) }
+      }
+      version++; writes++
       return json({ object: { sha: sha(version) } })
     }
     assert.fail('unexpected endpoint')
   }
   const request = (path = '', body, token, origin = 'https://team-kirari.github.io') => handleTrpgLogs(new Request(`https://kirari-stories.example.workers.dev/logs${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: origin, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), env, fetcher)
-  return { request, env, archive: () => archive, archiveReads: () => archiveReads, writes: () => writes, rebuildIndex: () => { index = buildLogIndex(archive) }, conflict: () => { conflict = true }, legacyIndex: () => { index = index.map(item => Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'logMetadataVersion'))) } }
+  const archiveIndex = () => { archive = active(); index = buildLogIndex(archive) }
+  return { request, env, archive: active, archiveReads: () => archiveReads, writes: () => writes, reads, files, index: () => index, archiveIndex,
+    dropIndex: () => { archive = active(); index = null },
+    rebuildIndex: () => { index = buildLogIndex(archive) }, conflict: () => { conflict = true },
+    legacyIndex: () => { archiveIndex(); index = index.map(item => Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'logMetadataVersion'))) } }
 }
+
+test('new writes and reads touch only the requested file and retain the existing index metadata', async () => {
+  const f = fixture(), first = draft(), second = draft()
+  assert.equal((await f.request('', first, 'A')).status, 200)
+  const archiveReads = f.archiveReads()
+  const original = structuredClone(f.index()[0])
+  // A second registration must not read or decode this existing file.
+  const firstPath = `web-trpg-logs/entries/${first.id}.json`
+  const saved = f.files.get(firstPath)
+  f.files.delete(firstPath)
+  const reads = f.reads.length
+  assert.equal((await f.request('', second, 'B')).status, 200)
+  assert.deepEqual(f.index().find(item => item.id === first.id), original)
+  assert.ok(f.reads.slice(reads).every(path => !path.includes('/entries/') && !path.includes('/archive.json')))
+  f.files.set(firstPath, saved)
+  const beforeRead = f.reads.length
+  assert.equal((await f.request(`/${second.id}/unlock`, { password: second.password })).status, 200)
+  assert.ok(f.reads.slice(beforeRead).every(path => !path.includes(first.id) && !path.includes('/archive.json')))
+  assert.ok(f.index().every(item => item.storage === 'file'))
+  assert.equal(f.archiveReads(), archiveReads)
+})
+
+test('legacy archives coexist with new files, migrate only on edit, and deleted IDs never resurrect', async () => {
+  const f = fixture(), legacy = draft(), added = draft()
+  assert.equal((await f.request('', legacy, 'A')).status, 200)
+  f.archiveIndex()
+  const reads = f.archiveReads()
+  assert.equal((await f.request('', added, 'B')).status, 200)
+  assert.equal(f.archiveReads(), reads)
+  assert.equal(f.index().find(item => item.id === legacy.id).storage, undefined)
+  assert.equal((await f.request(`/${legacy.id}/unlock`, { password: legacy.password })).status, 200)
+  assert.equal((await f.request('', { ...legacy, revision: 1, mutation: randomUUID(), password: null }, 'A')).status, 200)
+  assert.equal(f.index().find(item => item.id === legacy.id).storage, 'file')
+  assert.equal((await f.request(`/${legacy.id}/delete`, { revision: 2 }, 'A')).status, 200)
+  assert.equal((await f.request(`/${legacy.id}/unlock`, { password: legacy.password })).status, 404)
+  assert.equal(f.index().length, 1)
+  // The original archive still exists in this synthetic repo but is no longer
+  // authoritative. Deletion must also work without first migrating a legacy ID.
+  f.archiveIndex()
+  assert.equal((await f.request(`/${added.id}/delete`, { revision: 1 }, 'B')).status, 200)
+  assert.deepEqual(await (await f.request()).json(), [])
+  assert.equal((await f.request(`/${added.id}/unlock`, { password: added.password })).status, 404)
+})
+
+test('archives without an index remain readable and a new save establishes an authoritative index', async () => {
+  const f = fixture(), legacy = draft(), added = draft()
+  assert.equal((await f.request('', legacy, 'A')).status, 200)
+  f.dropIndex()
+  assert.equal((await f.request(`/${legacy.id}/unlock`, { password: legacy.password })).status, 200)
+  assert.equal((await f.request('', added, 'B')).status, 200)
+  assert.equal(f.index().length, 2)
+  assert.equal((await f.request(`/${legacy.id}/delete`, { revision: 1 }, 'A')).status, 200)
+  assert.equal((await f.request(`/${legacy.id}/unlock`, { password: legacy.password })).status, 404)
+})
+
+test('corrupted catalog and individual files fail closed and retain CORS headers on handled errors', async () => {
+  const f = fixture(), input = draft()
+  await f.request('', input, 'A')
+  const path = `web-trpg-logs/entries/${input.id}.json`
+  const saved = f.files.get(path)
+  for (const value of [null, { ...saved, id: randomUUID() }, { ...saved, owner: 'B' }, { ...saved, passwordHash: null }]) {
+    f.files.set(path, value)
+    const response = await f.request(`/${input.id}/unlock`, { password: input.password })
+    assert.equal(response.status, 502)
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://team-kirari.github.io')
+    assert.equal(JSON.stringify(await response.json()).includes('fake-github-secret'), false)
+  }
+  f.index()[0].storage = '../../archive'
+  const reads = f.reads.length
+  assert.equal((await f.request()).status, 502)
+  assert.ok(f.reads.slice(reads).every(path => path.includes('/index.json')))
+})
 
 test('prebuilt log index serves repeated lists without downloading or parsing the archive', async () => {
   const f = fixture()
@@ -232,15 +355,33 @@ test('Korean passwords, including a single character and long phrases, round-tri
   }
 })
 
-test('cinematic HTML exceeds the former file, request and archive caps and round-trips privately', async () => {
+test('cinematic HTML exceeds the former file, request and archive caps and round-trips privately', async context => {
   const f = fixture()
   const body = html(replay({ assets: { synthetic: { src: 'x'.repeat(16_000_000) } } }))
   assert.ok(Buffer.byteLength(body) > 20_000_000)
   const input = { ...draft(), body }
+  const cpuStart = process.cpuUsage(), started = performance.now()
   assert.equal((await f.request('', input, 'A')).status, 200)
+  const cpu = process.cpuUsage(cpuStart)
+  context.diagnostic(`Synthetic ${(Buffer.byteLength(body) / 1024 / 1024).toFixed(2)} MiB registration: ${(performance.now() - started).toFixed(0)} ms elapsed, ${((cpu.user + cpu.system) / 1000).toFixed(0)} ms Node process CPU; GitHub/Firebase mocked, not Cloudflare timing.`)
   const result = await f.request(`/${input.id}/unlock`, { password: input.password })
   assert.equal(result.status, 200)
   assert.equal((await result.json()).body, body)
+})
+
+test('many-message and many-event logs validate, save and retain source metadata', async () => {
+  const f = fixture()
+  const messages = Array.from({ length: 20_000 }, (_, id) => ({ id, speaker: '합성 화자', content: [{ tag: 'p', text: `합성 대사 ${id}` }], timestamp: '2026-09-25T01:00:00Z' }))
+  const events = Array.from({ length: 2_000 }, (_, id) => ({ layer: 'background', position: id * 10, sequence: id, imageUrl: 'https://files.d20.io/synthetic.png' }))
+  const input = { ...draft(), body: html(replay({ messages, events })) }
+  const parsed = parseTrpgReplay(input.body, decodeLogBase64)
+  assert.equal(parsed.messages.length, 20_000)
+  assert.equal(parsed.events.length, 2_000)
+  assert.equal((await f.request('', input, 'A')).status, 200)
+  const list = await (await f.request()).json()
+  assert.equal(list[0].logDate, '2026-09-25')
+  assert.equal(list[0].preview, 'https://files.d20.io/synthetic.png')
+  assert.equal((await f.request(`/${input.id}/unlock`, { password: input.password })).status, 200)
 })
 
 test('local checkout separates logs from stories and never returns hashes or passwordless logs', async () => {

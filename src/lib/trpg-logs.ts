@@ -30,21 +30,21 @@ function string(value: unknown, max = Infinity): string {
   if (typeof value !== 'string' || value.length > max) throw invalid()
   return value
 }
-function richText(value: unknown): string {
+function richText(value: unknown, collect = true): string {
   if (!Array.isArray(value)) throw invalid()
   const parts: string[] = []
   const stack: [unknown, number][] = value.slice().reverse().map(item => [item, 0])
   while (stack.length) {
     const [item, depth] = stack.pop()!
     if (depth > 30) throw invalid()
-    if (typeof item === 'string') { parts.push(string(item)); continue }
+    if (typeof item === 'string') { if (collect) parts.push(item); continue }
     const node = record(item)
     if (['script', 'style', 'iframe', 'object'].includes(String(node.tag))) continue
-    if (['br', 'p', 'div', 'tr', 'li'].includes(String(node.tag))) parts.push('\n')
-    if (node.text !== undefined) parts.push(string(node.text))
+    if (collect && ['br', 'p', 'div', 'tr', 'li'].includes(String(node.tag))) parts.push('\n')
+    if (node.text !== undefined) { const text = string(node.text); if (collect) parts.push(text) }
     if (node.children !== undefined) {
       if (!Array.isArray(node.children)) throw invalid()
-      stack.push(...node.children.slice().reverse().map(child => [child, depth + 1] as [unknown, number]))
+      for (let i = node.children.length - 1; i >= 0; i--) stack.push([node.children[i], depth + 1])
     }
   }
   const result = parts.join('').trim()
@@ -74,12 +74,23 @@ export function splitLogContent(nodes: RichNode[], assets: Record<string, unknow
   }
   return join(nodes.flatMap(node => visit(node, 0))).filter(part => part.image || richText(part.content).trim())
 }
-export function parseTrpgLog(source: string): ParsedLog {
+export type LogDecoder = (encoded: string) => Uint8Array
+function decodeBase64(encoded: string): Uint8Array {
+  const native = Uint8Array as typeof Uint8Array & { fromBase64?: LogDecoder }
+  if (native.fromBase64) return native.fromBase64(encoded)
+  const binary = atob(encoded)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+// Validate data without constructing transcript lines, scene snapshots or playback steps.
+// Workers supply their native Buffer decoder instead of a per-character JS conversion.
+export function parseTrpgReplay(source: string, decode: LogDecoder = decodeBase64): CinematicReplay {
   const encoded = source.match(/\bconst\s+B64\s*=\s*(['"])([A-Za-z0-9+/=\s]+)\1\s*;/)?.[2]
   if (!encoded) throw invalid()
   let data: Record<string, unknown>
   try {
-    const bytes = Uint8Array.from(atob(encoded.replace(/\s/g, '')), character => character.charCodeAt(0))
+    const bytes = decode(encoded)
     data = record(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)))
   } catch { throw invalid() }
   if (data.format !== 'rollscene-studio-project-v1' || !Array.isArray(data.messages) || !data.messages.length || !Array.isArray(data.events)) throw invalid()
@@ -92,25 +103,14 @@ export function parseTrpgLog(source: string): ParsedLog {
   // Older exports use null for absent asset references (especially clear events).
   const events = data.events.map(item => Object.fromEntries(Object.entries(record(item)).filter(([, value]) => value !== null))).sort((a, b) => Number(a.position) - Number(b.position) || Number(a.sequence) - Number(b.sequence))
   if (events.some(event => typeof event.position !== 'number' || !Number.isSafeInteger(event.position) || event.position < 0 || event.position > (data.messages as unknown[]).length || typeof event.sequence !== 'number' || !Number.isFinite(event.sequence) || !['background', 'foreground', 'fieldObjects', 'bgm'].includes(String(event.layer)))) throw invalid()
-  let background = '', foreground = '', cursor = 0, hasMedia = false
-  const entries = data.messages.map((item, id): LogLine => {
+  for (const item of data.messages) {
     const message = record(item)
-    while (cursor < events.length && Number(events[cursor].position) <= id) {
-      const event = events[cursor++]
-      if (event.layer === 'background') background = logMediaUrl(event.imageSrc ?? event.imageUrl ?? (event.assetId ? `asset:${event.assetId}` : ''), assets)
-      if (event.layer === 'foreground') foreground = logMediaUrl(event.imageSrc ?? event.imageUrl ?? (event.assetId ? `asset:${event.assetId}` : ''), assets)
-      hasMedia = true
-    }
-    const speaker = string(message.speaker, 200).trim()
-    const channel = string(message.tab, 100).trim() || 'main'
-    const body = message.content === undefined ? string(message.body) : richText(message.content)
+    string(message.speaker, 200)
+    string(message.tab, 100)
+    if (message.content === undefined) string(message.body)
+    else richText(message.content, false)
     if (message.narration !== undefined && typeof message.narration !== 'boolean') throw invalid()
-    const portrait = logMediaUrl(message.portrait, assets)
-    if (portrait) hasMedia = true
-    return { id, speaker, content: message.content as RichNode[] | undefined, color: typeof message.color === 'string' && /^#[a-f0-9]{3,8}$/i.test(message.color) ? message.color : undefined, text: body, channel, portrait, background, foreground,
-      narration: message.narration === true || !speaker || narrators.some(name => name.trim().toLowerCase() === speaker.toLowerCase()),
-      visible: Object.hasOwn(visibility, channel) ? visibility[channel] === true : !/^(잡담|ooc|out of character|비밀|귓말)$/i.test(channel) }
-  })
+  }
   const replay = { ...data, events, assets, settings, tabVisibility: visibility } as unknown as CinematicReplay
   for (const event of replay.events) {
     if (event.layer === 'fieldObjects' && (!Array.isArray(event.objects) || event.objects.some(object => !object || typeof object.id !== 'string' || typeof object.imageUrl !== 'string' || ![object.x, object.y, object.width, object.height, object.rotation, object.zIndex].every(Number.isFinite)))) throw invalid()
@@ -122,6 +122,31 @@ export function parseTrpgLog(source: string): ParsedLog {
   }
   if (settings.cameraZoom !== undefined && (typeof settings.cameraZoom !== 'number' || !Number.isFinite(settings.cameraZoom))) throw invalid()
   if (settings.showFieldObjects !== undefined && typeof settings.showFieldObjects !== 'boolean') throw invalid()
+  return replay
+}
+
+export function parseTrpgLog(source: string): ParsedLog {
+  const replay = parseTrpgReplay(source)
+  const { assets, events } = replay
+  const visibility = replay.tabVisibility ?? {}
+  const narrators = replay.settings?.narrators ?? ['Narrator', '나레이션', '나레이터', 'Narration']
+  let background = '', foreground = '', cursor = 0, hasMedia = false
+  const entries = replay.messages.map((message, id): LogLine => {
+    while (cursor < events.length && events[cursor].position <= id) {
+      const event = events[cursor++]
+      if (event.layer === 'background') background = logMediaUrl(event.imageSrc ?? event.imageUrl ?? (event.assetId ? `asset:${event.assetId}` : ''), assets)
+      if (event.layer === 'foreground') foreground = logMediaUrl(event.imageSrc ?? event.imageUrl ?? (event.assetId ? `asset:${event.assetId}` : ''), assets)
+      hasMedia = true
+    }
+    const speaker = string(message.speaker, 200).trim()
+    const channel = string(message.tab, 100).trim() || 'main'
+    const body = message.content === undefined ? string(message.body) : richText(message.content)
+    const portrait = logMediaUrl(message.portrait, assets)
+    if (portrait) hasMedia = true
+    return { id, speaker, content: message.content, color: typeof message.color === 'string' && /^#[a-f0-9]{3,8}$/i.test(message.color) ? message.color : undefined, text: body, channel, portrait, background, foreground,
+      narration: message.narration === true || !speaker || narrators.some(name => name.trim().toLowerCase() === speaker.toLowerCase()),
+      visible: Object.hasOwn(visibility, channel) ? visibility[channel] === true : !/^(잡담|ooc|out of character|비밀|귓말)$/i.test(channel) }
+  })
   const steps = buildReplaySteps(replay)
   const playback = steps.flatMap((step): LogLine[] => {
     const original = step.messageIndex === undefined ? undefined : entries[step.messageIndex]

@@ -5,7 +5,8 @@ import { promisify } from 'node:util'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
 import type { Story } from '../src/lib/stories.ts'
-import { parseTrpgLog } from '../src/lib/trpg-logs.ts'
+import { parseTrpgReplay } from '../src/lib/trpg-logs.ts'
+import { Buffer } from 'node:buffer'
 import { metadataFromLog } from '../src/lib/trpg-log-summary.ts'
 
 const derive = promisify(scrypt)
@@ -94,7 +95,7 @@ export function createLocalStoryStore(repo: string, { logs = false } = {}) {
         const previous = request.id === undefined ? null : await read(id)
         if (logs) {
           if (!previous && (typeof request.password !== 'string' || !request.password.trim()) || request.password !== null && (typeof request.password !== 'string' || !request.password.trim())) throw new StoryError(400, '로그에는 비밀번호가 필요해요.')
-          try { parseTrpgLog(draft.body) } catch { throw new StoryError(400, '시네마틱 로그 형식을 확인해 주세요.') }
+          try { parseTrpgReplay(draft.body, encoded => Buffer.from(encoded, 'base64')) } catch { throw new StoryError(400, '시네마틱 로그 형식을 확인해 주세요.') }
         }
         if (previous && previous.revision !== request.revision) throw new StoryError(409, '다른 곳에서 수정된 글이에요. 작성 내용을 복사한 뒤 목록에서 다시 열어 주세요.')
         let passwordHash = previous?.passwordHash ?? null

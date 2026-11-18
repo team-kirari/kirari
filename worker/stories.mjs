@@ -1,10 +1,11 @@
 import { handleUpload } from './index.mjs'
 import { Buffer } from 'node:buffer'
 import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
-import { buildStoryIndex, createStoryStore, StoryStoreConflict, STORY_REPO, validArchive } from './story-store.mjs'
-import { parseTrpgLog } from '../src/lib/trpg-logs.ts'
-import { compareLogs, LOG_METADATA_VERSION } from '../src/lib/trpg-log-summary.ts'
-import { buildLogIndex, validLogIndex } from './log-index.mjs'
+import { buildStoryIndex, createStoryStore, StoryStoreConflict, STORY_REPO } from './story-store.mjs'
+import { parseTrpgReplay } from '../src/lib/trpg-logs.ts'
+import { compareLogs, logMetadata } from '../src/lib/trpg-log-summary.ts'
+import { decodeLogBase64 } from './log-index.mjs'
+import { createLogStore } from './log-store.mjs'
 import { handleSecretAlbums } from './secret-albums.mjs'
 
 const ORIGIN = 'https://team-kirari.github.io'
@@ -17,6 +18,9 @@ class ApiError extends Error {
 const denied = () => new ApiError(404, '글을 열 수 없어요.')
 async function bounded(request, maxBytes = 500_000) {
   if (!request.body) throw new ApiError(400, '입력을 확인해 주세요.')
+  if (maxBytes === Infinity) {
+    try { return await request.json() } catch { throw new ApiError(400, '입력을 확인해 주세요.') }
+  }
   let length = 0
   const chunks = []
   for await (const chunk of request.body) {
@@ -81,30 +85,33 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
     const uid = writing || action === 'edit' || request.headers.has('Authorization') ? await identity(request, env, fetcher) : null
     if ((writing || action === 'edit') && !uid) throw new ApiError(401, '관리자 로그인이 필요해요.')
     const ghHeaders = { Authorization: `Bearer ${env.STORY_GITHUB_WRITE_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'kirari-stories', 'Content-Type': 'application/json' }
-    const store = createStoryStore((path, body, method = 'GET', raw = false) => fetcher(`${STORY_REPO}${path}`, {
+    const api = (path, body, method = 'GET', raw = false) => fetcher(`${STORY_REPO}${path}`, {
       method, headers: { ...ghHeaders, ...(raw ? { Accept: 'application/vnd.github.raw+json' } : {}) }, signal: AbortSignal.timeout(20000),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }), logs ? { directory: 'web-trpg-logs', archiveBytes: Infinity, indexBytes: Infinity, maxItems: Infinity, rawArchive: true, buildIndex: buildLogIndex, validateIndex: validLogIndex, validateArchive: items => validArchive(items, Infinity) && items.every(item => item.passwordHash !== null) } : {})
+    })
+    const store = logs ? createLogStore(api) : createStoryStore(api)
     if (request.method === 'GET' && !id) {
       // Compatibility for old archives until the one-time index build or next save.
       let index = await store.readIndex()
       if (logs) {
-        // Legacy indexes gain metadata without writing or republishing original HTML.
-        if (!index || index.some(item => item.logMetadataVersion !== LOG_METADATA_VERSION)) index = buildLogIndex(await store.readArchive())
         return reply(200, index.map(item => ({ id: item.id, title: item.title, editable: item.owner === uid, logDate: item.logDate, preview: item.preview })).sort(compareLogs))
       }
       index ??= buildStoryIndex(await store.readArchive())
       return reply(200, index.map(({ owner, ...summary }) => ({ ...summary, editable: owner === uid })).sort(compareStories))
     }
-    const snapshot = writing ? await store.snapshot() : null
-    const items = snapshot ? snapshot.items : await store.readArchive()
+    let input
+    if (request.method === 'POST') {
+      if (request.headers.get('Content-Type') !== 'application/json') throw new ApiError(415, 'JSON 입력만 지원해요.')
+      input = await bounded(request, action === 'delete' ? 1024 : logs ? Infinity : 500_000)
+      if (logs && writing && !UUID.test(id ?? input?.id)) throw new ApiError(400, '로그 주소를 확인해 주세요.')
+    }
+    const snapshot = writing ? await store.snapshot(logs ? id ?? input.id : undefined) : null
+    const items = snapshot ? snapshot.items : await store.readArchive(logs ? id : undefined)
     if (request.method === 'GET') {
       const story = items.find(item => item.id === id)
       if (!story || action === 'unlock' || (action === 'edit' ? story.owner !== uid : story.passwordHash !== null)) throw denied()
       return reply(200, present(story, uid))
     }
-    if (request.headers.get('Content-Type') !== 'application/json') throw new ApiError(415, 'JSON 입력만 지원해요.')
-    const input = await bounded(request, action === 'delete' ? 1024 : logs ? Infinity : 500_000)
     if (action === 'delete') {
       const story = items.find(item => item.id === id)
       if (!story || story.owner !== uid) throw denied()
@@ -122,12 +129,15 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
     if (!draft || !UUID.test(input.id) || !UUID.test(input.mutation) || !Number.isSafeInteger(input.revision) || input.revision < 0) throw new ApiError(400, '제목·본문·폰트 입력을 확인해 주세요.')
     const previous = items.find(item => item.id === input.id)
     if (previous && previous.owner !== uid) throw denied()
+    let metadata
     if (logs) {
       if (!previous && (typeof input.password !== 'string' || !input.password.trim()) || input.password !== null && (typeof input.password !== 'string' || !input.password.trim())) throw new ApiError(400, '로그에는 비밀번호가 필요해요.')
-      try { parseTrpgLog(draft.body) } catch { throw new ApiError(400, '시네마틱 로그 형식을 확인해 주세요.') }
     }
     if (previous?.mutation === input.mutation) return reply(200, present(previous, uid))
     if ((previous?.revision ?? 0) !== input.revision) throw new ApiError(409, '다른 곳에서 수정된 글이에요. 입력 내용을 복사하고 목록에서 다시 열어 주세요.')
+    if (logs) {
+      try { metadata = logMetadata({ replay: parseTrpgReplay(draft.body, decodeLogBase64) }) } catch { throw new ApiError(400, '시네마틱 로그 형식을 확인해 주세요.') }
+    }
     let passwordHash = previous?.passwordHash ?? null
     if (input.password !== null) {
       if (typeof input.password !== 'string') throw new ApiError(400, '비밀번호 입력을 확인해 주세요.')
@@ -136,9 +146,8 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
     const now = new Date().toISOString()
     const story = { ...draft, ...(draft.fontSize === undefined && previous?.fontSize !== undefined ? { fontSize: previous.fontSize } : {}), ...(draft.writtenOn === undefined && previous?.writtenOn ? { writtenOn: previous.writtenOn } : {}), id: input.id, owner: uid, mutation: input.mutation, revision: input.revision + 1, createdAt: previous?.createdAt ?? now, updatedAt: now, passwordHash }
     const next = [...items.filter(item => item.id !== story.id), story]
-    const content = JSON.stringify(next)
-    if (!logs && (next.length > 100 || Buffer.byteLength(content) > MAX_BYTES)) throw new ApiError(413, '이야기 저장 한도(100개·전체 900KB)를 초과했어요.')
-    await store.save(snapshot, next)
+    if (!logs && (next.length > 100 || Buffer.byteLength(JSON.stringify(next)) > MAX_BYTES)) throw new ApiError(413, '이야기 저장 한도(100개·전체 900KB)를 초과했어요.')
+    await store.save(snapshot, next, metadata)
     return reply(200, present(story, uid))
   } catch (error) {
     if (error instanceof StoryStoreConflict) return reply(409, { error: '다른 저장과 겹쳤어요. 저장 버튼을 다시 눌러 주세요.' })

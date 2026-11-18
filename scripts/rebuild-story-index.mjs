@@ -31,9 +31,19 @@ try {
   if (!expectedRemote) throw new Error('repository')
   git(['fetch', 'origin', 'main'])
   const head = git(['rev-parse', 'FETCH_HEAD'])
-  const items = JSON.parse(git(['show', `${head}:${collection}/archive.json`]))
+  let items, currentIndex
+  if (logs && git(['ls-tree', '--name-only', head, `${collection}/index.json`])) {
+    currentIndex = JSON.parse(git(['show', `${head}:${collection}/index.json`]))
+    if (!validLogIndex(currentIndex)) throw new Error('format')
+    let legacy
+    items = currentIndex.map(item => {
+      if (item.storage === 'file') return JSON.parse(git(['show', `${head}:${collection}/entries/${item.id}.json`]))
+      legacy ??= JSON.parse(git(['show', `${head}:${collection}/archive.json`]))
+      return legacy.find(log => log.id === item.id)
+    })
+  } else items = JSON.parse(git(['show', `${head}:${collection}/archive.json`]))
   if (!validArchive(items, logs ? Infinity : 100) || logs && items.some(item => item.passwordHash === null)) throw new Error('format')
-  const index = logs ? buildLogIndex(items) : buildStoryIndex(items)
+  const index = logs ? buildLogIndex(items).map((item, i) => ({ ...item, storage: currentIndex?.[i].storage ?? 'archive' })) : buildStoryIndex(items)
   if (logs && !validLogIndex(index)) throw new Error('format')
   const content = JSON.stringify(index)
   scratch = mkdtempSync(join(tmpdir(), 'kirari-story-index-'))

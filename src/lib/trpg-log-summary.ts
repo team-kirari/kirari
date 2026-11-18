@@ -1,6 +1,6 @@
 import { isStoryDate } from './stories.ts'
-import { logMediaUrl, parseTrpgLog } from './trpg-logs.ts'
-import type { ParsedLog } from './trpg-logs.ts'
+import { logMediaUrl, parseTrpgReplay } from './trpg-logs.ts'
+import type { LogDecoder, ParsedLog } from './trpg-logs.ts'
 import type { ReplayEvent } from './trpg-replay.ts'
 
 export const LOG_METADATA_VERSION = 2
@@ -15,7 +15,7 @@ export function logPreviewUrl(value: unknown): string {
   return logMediaUrl(value)
 }
 
-export function logMetadata(parsed: ParsedLog): LogMetadata {
+export function logMetadata(parsed: Pick<ParsedLog, 'replay'>): LogMetadata {
   let logDate: string | null = null
   for (const message of parsed.replay.messages) {
     const timestamp = message.timestamp
@@ -44,8 +44,8 @@ export function logMetadata(parsed: ParsedLog): LogMetadata {
   return { logDate, preview }
 }
 
-export function metadataFromLog(source: string): LogMetadata {
-  return logMetadata(parseTrpgLog(source))
+export function metadataFromLog(source: string, decode?: LogDecoder): LogMetadata {
+  return logMetadata({ replay: parseTrpgReplay(source, decode) })
 }
 
 export function validLogMetadata(value: LogMetadata): boolean {
