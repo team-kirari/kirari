@@ -1,4 +1,13 @@
 export const STORY_DEFAULT_FONT_SIZE = 18
+export const storySizePresets = [
+  { value: 16, label: '작게' },
+  { value: STORY_DEFAULT_FONT_SIZE, label: '중간' },
+  { value: 22, label: '크게' },
+]
+export function storyPresetSize(size = STORY_DEFAULT_FONT_SIZE): number {
+  return storySizePresets.reduce((nearest, preset) => Math.abs(preset.value - size) < Math.abs(nearest - size) ? preset.value : nearest, STORY_DEFAULT_FONT_SIZE)
+}
+// Keep accepting legacy saved sizes so existing archives and drafts remain readable.
 export const storyFontSizes = Array.from({ length: 21 }, (_, index) => index + 12)
 export const storyFonts = {
   default: { label: '사이트 기본', family: 'var(--font-sans)' },

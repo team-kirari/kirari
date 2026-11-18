@@ -4,12 +4,21 @@ import { mkdtemp, readFile, writeFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
-import { compareStories, isStoryDate, parseStoryDraft, storyBlocks, storyDate } from '../src/lib/stories.ts'
+import { compareStories, isStoryDate, parseStoryDraft, storyBlocks, storyDate, storyPresetSize, storySizePresets } from '../src/lib/stories.ts'
 import { createLocalStoryMiddleware, createLocalStoryStore } from '../scripts/local-stories.ts'
 import { privateRepoRoot } from '../scripts/private-repo.mjs'
 
 const draft = { title: '합성 시험 글', author: '시험 작성자', body: '첫 문단\n대사\n\n***\n\n다음 장면', font: 'default', password: '' }
 const koreanPassword = '테스트용한글암호입니다'
+
+test('three reading sizes map legacy sizes without rejecting existing stories', () => {
+  assert.deepEqual(storySizePresets.map(preset => preset.value), [16, 18, 22])
+  assert.equal(storyPresetSize(), 18)
+  for (const [legacy, expected] of [[12, 16], [16, 16], [18, 18], [19, 18], [22, 22], [32, 22]]) {
+    assert.equal(storyPresetSize(legacy), expected)
+    assert.equal(parseStoryDraft({ ...draft, fontSize: legacy }).fontSize, legacy)
+  }
+})
 
 test('stories longer than 100,000 characters remain editable and round-trip locally', async () => {
   const body = '가'.repeat(120_001)
@@ -70,9 +79,22 @@ test('local stories round-trip, Korean password hashes stay private, revisions p
   assert.equal(races.filter(item => item.status === 'fulfilled').length, 1)
   await assert.rejects(store.get('../README'), { status: 404 })
   await assert.rejects(store.save({ ...draft, id: '../README' }), { status: 404 })
-  await assert.rejects(store.save({ ...draft, password: 'short' }), { status: 400 })
+  await assert.rejects(store.save({ ...draft, password: 123 }), { status: 400 })
   await writeFile(join(root, 'stories', `${story.id}.json`), '{broken json')
   await assert.rejects(store.get(story.id), { status: 404 })
+})
+
+test('short and long local passwords still require an exact match', async () => {
+  const store = createLocalStoryStore(await mkdtemp(join(tmpdir(), 'kirari-password-length-')))
+  for (const password of ['a', '한'.repeat(129)]) {
+    const saved = await store.save({ ...draft, password })
+    assert.equal(saved.protected, true)
+    await assert.rejects(store.get(saved.id), { status: 404 })
+    for (const wrong of ['', password + 'x', 123]) {
+      await assert.rejects(store.get(saved.id, wrong), { status: 404 })
+    }
+    assert.equal((await store.get(saved.id, password)).body, draft.body)
+  }
 })
 
 test('story directories cannot redirect writes through junctions or symlinks', async () => {

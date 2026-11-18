@@ -16,7 +16,7 @@
 .story-title p{font-size:13px;margin:15px 0}
 .story-title time{display:block;font-family:var(--font-sans);font-size:11px;opacity:.65;margin-top:14px}
 .story-prose{font-size:18px;line-height:2;letter-spacing:-.015em;word-break:normal;overflow-wrap:anywhere}
-.story-prose p{white-space:pre-wrap;text-indent:1em;margin:0 0 1em}
+.story-prose p{white-space:pre-wrap;text-indent:0;margin:0 0 1em}
 .story-scene-break{text-align:center;margin:3.5em 0;color:var(--accent);font-size:13px;text-indent:0;letter-spacing:.25em}
 .story-reader-font{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px}
 .story-editor-layout{display:grid;gap:24px;align-items:start}

@@ -30,7 +30,7 @@ async function protect(password) {
   return `${salt}:${await passwordDigest(password, salt)}`
 }
 async function matches(password, hash) {
-  if (typeof password !== 'string' || password.length < 8 || password.length > 128) return false
+  if (typeof password !== 'string' || !password) return false
   const [salt, expected] = hash.split(':')
   const actual = await passwordDigest(password, salt)
   let diff = 0
@@ -116,7 +116,7 @@ export async function handleStories(request, env, fetcher = fetch) {
     if ((previous?.revision ?? 0) !== input.revision) throw new ApiError(409, '다른 곳에서 수정된 글이에요. 입력 내용을 복사하고 목록에서 다시 열어 주세요.')
     let passwordHash = previous?.passwordHash ?? null
     if (input.password !== null) {
-      if (typeof input.password !== 'string' || input.password.length > 128 || input.password && input.password.length < 8) throw new ApiError(400, '비밀번호는 8~128자로 입력해 주세요.')
+      if (typeof input.password !== 'string') throw new ApiError(400, '비밀번호 입력을 확인해 주세요.')
       passwordHash = input.password ? await protect(input.password) : null
     }
     const now = new Date().toISOString()

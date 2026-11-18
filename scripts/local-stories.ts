@@ -63,7 +63,7 @@ export function createLocalStoryStore(repo: string) {
     async get(id: string, password?: string, owner = false) {
       const data = await read(id)
       if (data.passwordHash && !owner) {
-        if (typeof password !== 'string' || password.length > 128) throw unavailable()
+        if (typeof password !== 'string' || !password) throw unavailable()
         const [salt, expected] = data.passwordHash.split(':')
         const actual = await derive(password, salt, 64) as Buffer
         if (!timingSafeEqual(actual, Buffer.from(expected, 'hex'))) throw unavailable()
@@ -82,7 +82,7 @@ export function createLocalStoryStore(repo: string) {
         let passwordHash = previous?.passwordHash ?? null
         // null preserves the current password; empty string removes it.
         if (request.password !== null) {
-          if (typeof request.password !== 'string' || request.password.length > 128 || request.password.length > 0 && request.password.length < 8) throw new StoryError(400, '비밀번호는 8~128자로 입력해 주세요.')
+          if (typeof request.password !== 'string') throw new StoryError(400, '비밀번호 입력을 확인해 주세요.')
           if (request.password) {
             const salt = randomBytes(16).toString('hex')
             passwordHash = `${salt}:${(await derive(request.password, salt, 64) as Buffer).toString('hex')}`

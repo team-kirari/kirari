@@ -87,13 +87,28 @@ test('owner controls edit; password applies to guests, other admins, every read 
   assert.equal((await f.request('', { ...draft, revision: 1 }, 'A')).status, 403)
   assert.equal(f.items()[0].passwordHash.includes(password), false)
 })
+test('short and long passwords still require an exact match', async () => {
+  for (const password of ['a', '한'.repeat(129)]) {
+    const f = fixture()
+    const response = await f.request('', { ...draft, password }, 'A')
+    assert.equal(response.status, 200)
+    const saved = await response.json()
+    assert.equal(saved.protected, true)
+    assert.equal((await f.request(`/${saved.id}`)).status, 404)
+    for (const wrong of ['', password + 'x', 123]) {
+      assert.equal((await f.request(`/${saved.id}/unlock`, { password: wrong })).status, 404)
+    }
+    assert.equal((await f.request(`/${saved.id}/unlock`, { password })).status, 200)
+  }
+})
+
 test('input, paths, cross-origin requests, upstream conflict and rate limits fail closed', async () => {
   const f = fixture()
   const hostile = new Request('https://kirari-stories.example.workers.dev/stories', { headers: { Origin: 'https://hostile.invalid' } })
   assert.equal((await handleStories(hostile, f.env)).status, 403)
   const preflight = await handleStories(new Request(hostile.url, { method: 'OPTIONS', headers: { Origin: origin } }), f.env)
   assert.equal(preflight.status, 204)
-  for (const input of [{ ...draft, font: '__proto__' }, { ...draft, id: '../secret' }, { ...draft, mutation: 'bad' }, { ...draft, password: 'short' }, { ...draft, body: 'a'.repeat(500_001) }]) assert.ok((await f.request('', input, 'A')).status >= 400)
+  for (const input of [{ ...draft, font: '__proto__' }, { ...draft, id: '../secret' }, { ...draft, mutation: 'bad' }, { ...draft, password: 123 }, { ...draft, body: 'a'.repeat(500_001) }]) assert.ok((await f.request('', input, 'A')).status >= 400)
   assert.equal((await f.request('/invalid/edit', undefined, 'A')).status, 404)
   f.conflict(true)
   assert.equal((await f.request('', draft, 'A')).status, 409)

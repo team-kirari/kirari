@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { ArrowLeft, LockKeyhole, Pencil, Plus } from 'lucide-react'
-import { compareStories, isStoryDate, isStoryFont, parseStoryDraft, storyDate, STORY_DEFAULT_FONT_SIZE, storyBlocks, storyFonts, storyFontSizes } from '../lib/stories'
+import { compareStories, isStoryDate, isStoryFont, parseStoryDraft, storyDate, STORY_DEFAULT_FONT_SIZE, storyBlocks, storyFonts, storySizePresets, storyPresetSize } from '../lib/stories'
 import type { Story, StoryDraft, StoryFont, StorySummary } from '../lib/stories'
 import { useStoryFont } from '../lib/useStoryFont'
 import './StoryFonts.css'
@@ -71,7 +71,7 @@ function StoryReader({ draft, writtenOn, preview = false }: { draft: StoryDraft,
   return <article className="story-reader" aria-label={preview ? '게시글 미리보기' : '이야기 본문'} style={{ '--story-font': storyFonts[draft.font].family } as CSSProperties}>
     <header className="story-title">{!preview && <span>이야기</span>}<h2>{draft.title || '제목'}</h2>{draft.author && <p>w. {draft.author}</p>}{writtenOn && <time dateTime={writtenOn}>{formatDate(writtenOn)}</time>}</header>
     {fontStatus && <p className="story-font-status" role="status">{fontStatus}</p>}
-    <div className="story-prose" style={{ fontSize: draft.fontSize }}>{storyBlocks(draft.body).map((block, index) => block.kind === 'scene'
+    <div className="story-prose" style={{ fontSize: storyPresetSize(draft.fontSize) }}>{storyBlocks(draft.body).map((block, index) => block.kind === 'scene'
       ? <div className="story-scene-break" role="separator" aria-label="장면 전환" key={index}><span aria-hidden="true">＊ ＊ ＊</span></div>
       : <p key={index}>{block.text}</p>)}</div>
   </article>
@@ -180,12 +180,12 @@ function StoryEditor({ original, onSaved, onCancel }: { original?: Story, onSave
   async function save() {
     if (pending.current) return
     if (!parseStoryDraft(draft)) { setError('제목·본문·작성 날짜를 확인해 주세요.'); return }
-    if (protect && !(original?.protected && !password) && (password.length < 8 || password.length > 128)) { setError('비밀번호는 8~128자로 입력해 주세요.'); return }
+    if (protect && !original?.protected && !password) { setError('비밀번호를 입력해 주세요.'); return }
     if (protect && password !== passwordConfirm) { setError('비밀번호와 비밀번호 확인이 일치하지 않아요.'); return }
     pending.current = true
     setBusy(true); setError('')
     try {
-      const payload = { ...draft, ...(original ? { id: original.id, revision: original.revision } : remote ? { id: newId.current, revision: 0 } : {}), password: protect ? password || null : '' }
+      const payload = { ...draft, fontSize: storyPresetSize(draft.fontSize), ...(original ? { id: original.id, revision: original.revision } : remote ? { id: newId.current, revision: 0 } : {}), password: protect ? password || null : '' }
       const serialized = JSON.stringify(payload)
       if (retry.current.payload !== serialized) retry.current = { payload: serialized, mutation: crypto.randomUUID() }
       const result = readStory(await request('', { ...payload, ...(remote ? { mutation: retry.current.mutation } : {}) }, remote))
@@ -224,16 +224,16 @@ function StoryEditor({ original, onSaved, onCancel }: { original?: Story, onSave
         <label>작성 날짜<input type="date" min="0001-01-01" max="9999-12-31" required value={draft.writtenOn ?? ''} onChange={event => update('writtenOn', event.target.value)} /></label>
         <div className="story-font-fields">
           <label>본문 폰트<select value={draft.font} onChange={event => { if (isStoryFont(event.target.value)) update('font', event.target.value) }}>{Object.entries(storyFonts).map(([value, font]) => <option value={value} key={value}>{font.label}</option>)}</select></label>
-          <label>글자 크기<select value={draft.fontSize ?? STORY_DEFAULT_FONT_SIZE} onChange={event => { const fontSize = Number(event.target.value); if (storyFontSizes.includes(fontSize)) setDraft(previous => ({ ...previous, fontSize })) }}>{storyFontSizes.map(size => <option value={size} key={size}>{size}px</option>)}</select></label>
+          <label>글자 크기<select value={storyPresetSize(draft.fontSize)} onChange={event => { const fontSize = Number(event.target.value); if (storySizePresets.some(preset => preset.value === fontSize)) setDraft(previous => ({ ...previous, fontSize })) }}>{storySizePresets.map(size => <option value={size.value} key={size.value}>{size.label}</option>)}</select></label>
         </div>
         {fontStatus && <p className="story-font-status" role="status">{fontStatus}</p>}
         <label className="story-protect"><input type="checkbox" checked={protect} onChange={event => { setProtect(event.target.checked); setPassword(''); setPasswordConfirm('') }} /> 열람 비밀번호 설정</label>
         {protect && <div className="story-password-fields">
-          <label>{original?.protected ? '새 비밀번호' : '비밀번호'}<input type="text" value={password} autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} onChange={event => setPassword(event.target.value)} /></label>
-          <label>비밀번호 확인<input type="text" value={passwordConfirm} autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} onChange={event => setPasswordConfirm(event.target.value)} /></label>
-          <small className="story-password-help">{original?.protected && '두 칸을 비워 두면 기존 비밀번호를 유지해요. '}한글을 포함해 8~128자. {remote ? '수정 권한은 글을 작성한 관리자에게 있어요.' : '수정 권한은 로컬 작성자에게 있어요.'}</small>
+          <label>{original?.protected ? '새 비밀번호' : '비밀번호'}<input type="text" value={password} autoComplete="off" autoCapitalize="off" spellCheck={false} onChange={event => setPassword(event.target.value)} /></label>
+          <label>비밀번호 확인<input type="text" value={passwordConfirm} autoComplete="off" autoCapitalize="off" spellCheck={false} onChange={event => setPasswordConfirm(event.target.value)} /></label>
+          <small className="story-password-help">{original?.protected && '두 칸을 비워 두면 기존 비밀번호를 유지해요. '}한글을 포함해 글자 수 제한 없이 설정할 수 있어요. {remote ? '수정 권한은 글을 작성한 관리자에게 있어요.' : '수정 권한은 로컬 작성자에게 있어요.'}</small>
         </div>}
-        <label>본문<textarea className="story-body-input" value={draft.body} style={{ fontFamily: storyFonts[draft.font].family, fontSize: draft.fontSize }} onChange={event => update('body', event.target.value)} aria-describedby="story-scene-help story-statistics" /></label>
+        <label>본문<textarea className="story-body-input" value={draft.body} style={{ fontFamily: storyFonts[draft.font].family, fontSize: storyPresetSize(draft.fontSize) }} onChange={event => update('body', event.target.value)} aria-describedby="story-scene-help story-statistics" /></label>
         <dl id="story-statistics" className="story-statistics" aria-label="본문 통계" aria-busy={statisticsBody !== draft.body}>
           {([
             ['공백 포함', `${statistics.withSpaces.toLocaleString()}자`],
@@ -264,6 +264,7 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [readerFont, setReaderFont] = useState<StoryFont | null>(null)
+  const [readerSize, setReaderSize] = useState<number | null>(null)
   const load = useCallback(async () => {
     if (!available) return
     setLoading(true)
@@ -286,7 +287,7 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
     pending.current = true; setBusy(true); setError(''); setNotice('')
     try {
       const story = readStory(await request(`/${item.id}${editing ? '/edit' : ''}`, undefined, remote && admin))
-      setReaderFont(null); setView(editing ? { kind: 'edit', story } : { kind: 'read', story })
+      setReaderFont(null); setReaderSize(null); setView(editing ? { kind: 'edit', story } : { kind: 'read', story })
     } catch (error) { setError(error instanceof Error ? error.message : '글을 불러오지 못했어요.') }
     finally { pending.current = false; setBusy(false) }
   }
@@ -297,13 +298,13 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
     pending.current = true; setBusy(true); setError('')
     try {
       const story = readStory(await request(`/${locked.id}/unlock`, { password: value }, remote && admin))
-      setReaderFont(null); setLocked(null); setView({ kind: 'read', story })
+      setReaderFont(null); setReaderSize(null); setLocked(null); setView({ kind: 'read', story })
     } catch { setError('글을 열 수 없어요. 비밀번호를 확인하거나 잠시 후 다시 시도해 주세요.') }
     finally { pending.current = false; setBusy(false) }
   }
   if (view.kind === 'edit') {
     if (!canWrite) return <p role="status">관리자로 다시 로그인해 주세요.<button type="button" onClick={() => setView({ kind: 'list' })}>목록</button></p>
-    return <StoryEditor original={view.story} onCancel={() => { setView({ kind: 'list' }); void load() }} onSaved={(story, backupWarning) => { setView({ kind: 'read', story }); setReaderFont(null); setNotice(remote ? 'GitHub 원격 저장소에 저장했어요.' : '로컬 저장소에 저장했어요. GitHub 원격에는 아직 반영하지 않았어요.'); if (backupWarning) setNotice(previous => `${previous} ${backupWarning}`); void load() }} />
+    return <StoryEditor original={view.story} onCancel={() => { setView({ kind: 'list' }); void load() }} onSaved={(story, backupWarning) => { setView({ kind: 'read', story }); setReaderFont(null); setReaderSize(null); setNotice(remote ? 'GitHub 원격 저장소에 저장했어요.' : '로컬 저장소에 저장했어요. GitHub 원격에는 아직 반영하지 않았어요.'); if (backupWarning) setNotice(previous => `${previous} ${backupWarning}`); void load() }} />
   }
   return <div className="stories" aria-busy={loading || busy}>
     {busy && <div className="story-loading-overlay"><StoryLoading /></div>}
@@ -313,11 +314,11 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
       {loading ? <StoryLoading /> : !items.length && !error && <div className="story-empty"><p>아직 아무것도 없어요</p></div>}
       {!loading && <div className="story-list">{items.map((item, index) => <article key={item.id} style={{ animationDelay: `${Math.min(index, 12) * 65}ms` }}><button className="story-list-open" disabled={busy} onClick={() => void open(item)}><span>{item.protected && <LockKeyhole size={14} />}<strong>{item.title}</strong></span><small>{item.author && `w. ${item.author} · `}{formatDate(storyDate(item))}</small></button>{canEdit(item) && <button className="soft-button" disabled={busy} aria-label={`${item.title} 수정`} onClick={() => void open(item, true)}><Pencil size={14} /> 수정</button>}</article>)}</div>}
     </> : <>
-      <div className="story-toolbar"><button className="soft-button" onClick={() => { setView({ kind: 'list' }); setNotice(''); void load() }}><ArrowLeft size={14} /> 목록</button><label className="story-reader-font">폰트<select value={readerFont ?? view.story.font} onChange={event => { if (isStoryFont(event.target.value)) setReaderFont(event.target.value) }}>{Object.entries(storyFonts).map(([value, font]) => <option key={value} value={value}>{font.label}</option>)}</select></label>{canEdit(view.story) && <button className="soft-button" onClick={() => setView({ kind: 'edit', story: view.story })}><Pencil size={14} /> 수정</button>}</div>
+      <div className="story-toolbar"><button className="soft-button" onClick={() => { setView({ kind: 'list' }); setNotice(''); void load() }}><ArrowLeft size={14} /> 목록</button><label className="story-reader-font">폰트<select value={readerFont ?? view.story.font} onChange={event => { if (isStoryFont(event.target.value)) setReaderFont(event.target.value) }}>{Object.entries(storyFonts).map(([value, font]) => <option key={value} value={value}>{font.label}</option>)}</select></label><label className="story-reader-font">글자 크기<select value={readerSize ?? storyPresetSize(view.story.fontSize)} onChange={event => { const size = Number(event.target.value); if (storySizePresets.some(preset => preset.value === size)) setReaderSize(size) }}>{storySizePresets.map(size => <option key={size.value} value={size.value}>{size.label}</option>)}</select></label>{canEdit(view.story) && <button className="soft-button" onClick={() => setView({ kind: 'edit', story: view.story })}><Pencil size={14} /> 수정</button>}</div>
       {notice && <p className="story-feedback" role="status">{notice}</p>}
-      <StoryReader key={view.story.id} draft={{ ...view.story, font: readerFont ?? view.story.font }} writtenOn={storyDate(view.story)} />
+      <StoryReader key={view.story.id} draft={{ ...view.story, font: readerFont ?? view.story.font, fontSize: readerSize ?? storyPresetSize(view.story.fontSize) }} writtenOn={storyDate(view.story)} />
     </>}
-    {locked && <form className="story-unlock" onSubmit={event => { event.preventDefault(); void unlock() }}><label>이야기 비밀번호<input ref={password} type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} required autoFocus disabled={busy} /></label><button className="primary-button" disabled={busy}>{busy ? '확인 중…' : '열기'}</button><button className="soft-button" type="button" disabled={busy} onClick={() => { setLocked(null); setError('') }}>취소</button></form>}
+    {locked && <form className="story-unlock" onSubmit={event => { event.preventDefault(); void unlock() }}><label>이야기 비밀번호<input ref={password} type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} required autoFocus disabled={busy} /></label><button className="primary-button" disabled={busy}>{busy ? '확인 중…' : '열기'}</button><button className="soft-button" type="button" disabled={busy} onClick={() => { setLocked(null); setError('') }}>취소</button></form>}
     {error && <p className="story-feedback" role="alert">{error}</p>}
     {error && view.kind === 'list' && !locked && <button className="soft-button" onClick={() => void load()}>다시 불러오기</button>}
   </div>
