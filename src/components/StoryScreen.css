@@ -21,7 +21,7 @@
 .story-reader-font{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px}
 .story-editor-layout{display:grid;gap:24px;align-items:start}
 .story-editor-split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-.story-editor-split .story-reader{width:100%;padding:35px 24px 60px;margin-top:0}
+.story-editor-split .story-reader{width:100%;padding:35px 24px 60px;margin-top:0;max-height:75dvh;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
 .story-editor-split .story-title{padding-bottom:40px}
 .story-fields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px}
 .story-fields label,.story-unlock label{display:grid;gap:8px;font-size:12px}

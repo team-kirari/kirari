@@ -68,7 +68,7 @@ function StoryLoading() {
 
 function StoryReader({ draft, writtenOn, preview = false }: { draft: StoryDraft, writtenOn?: string, preview?: boolean }) {
   const fontStatus = useStoryFont(draft.font)
-  return <article className="story-reader" aria-label={preview ? '게시글 미리보기' : '이야기 본문'} style={{ '--story-font': storyFonts[draft.font].family } as CSSProperties}>
+  return <article className="story-reader" tabIndex={preview ? 0 : undefined} aria-label={preview ? '게시글 미리보기' : '이야기 본문'} style={{ '--story-font': storyFonts[draft.font].family } as CSSProperties}>
     <header className="story-title">{!preview && <span>이야기</span>}<h2>{draft.title || '제목'}</h2>{draft.author && <p>w. {draft.author}</p>}{writtenOn && <time dateTime={writtenOn}>{formatDate(writtenOn)}</time>}</header>
     {fontStatus && <p className="story-font-status" role="status">{fontStatus}</p>}
     <div className="story-prose" style={{ fontSize: storyPresetSize(draft.fontSize) }}>{storyBlocks(draft.body).map((block, index) => block.kind === 'scene'
