@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
           next()
         })
         server.middlewares.use(createLocalStoryMiddleware(repo))
+        server.middlewares.use(createLocalStoryMiddleware(repo, { logs: true }))
       },
     }],
     resolve: { alias: { '@private-assets': assets } },
@@ -38,7 +39,7 @@ export default defineConfig(({ mode }) => {
       fs: {
         strict: true,
         allow: [project, ...['img', 'gallery', 'profiles/kenji/old', 'profiles/kenji/new', 'profiles/kiyo/old', 'profiles/kiyo/new'].map(folder => resolve(assets, folder))],
-        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/stories/**', '**/staging/**'],
+        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/stories/**', '**/trpg-logs/**', '**/web-trpg-logs/**', '**/staging/**'],
       },
     },
     base: '/kirari/',

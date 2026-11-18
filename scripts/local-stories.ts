@@ -5,6 +5,8 @@ import { promisify } from 'node:util'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
 import type { Story } from '../src/lib/stories.ts'
+import { parseTrpgLog } from '../src/lib/trpg-logs.ts'
+import { metadataFromLog } from '../src/lib/trpg-log-summary.ts'
 
 const derive = promisify(scrypt)
 const idPattern = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
@@ -16,8 +18,8 @@ class StoryError extends Error {
 }
 const unavailable = () => new StoryError(404, '글을 열 수 없어요.')
 
-export function createLocalStoryStore(repo: string) {
-  const root = resolve(repo), directory = join(root, 'stories')
+export function createLocalStoryStore(repo: string, { logs = false } = {}) {
+  const root = resolve(repo), directory = join(root, logs ? 'trpg-logs' : 'stories')
   let queue: Promise<unknown> = Promise.resolve()
   async function checkDirectory(create = false) {
     const source = await lstat(root)
@@ -35,13 +37,14 @@ export function createLocalStoryStore(repo: string) {
     let data: RecordStory
     try {
       const info = await lstat(path)
-      if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_BYTES) throw unavailable()
+      if (!info.isFile() || info.isSymbolicLink() || !logs && info.size > MAX_BYTES) throw unavailable()
       data = JSON.parse(await readFile(path, 'utf8')) as RecordStory
     } catch { throw unavailable() }
     if (!parseStoryDraft(data) || data.id !== id || !Number.isSafeInteger(data.revision) || data.revision < 1
       || typeof data.createdAt !== 'string' || !Number.isFinite(Date.parse(data.createdAt))
       || typeof data.updatedAt !== 'string' || !Number.isFinite(Date.parse(data.updatedAt))
       || !(data.passwordHash === null || typeof data.passwordHash === 'string' && /^[a-f0-9]{32}:[a-f0-9]{128}$/.test(data.passwordHash))) throw unavailable()
+    if (logs && data.passwordHash === null) throw unavailable()
     return data
   }
   function present(data: RecordStory): Story {
@@ -52,21 +55,22 @@ export function createLocalStoryStore(repo: string) {
     async list() {
       if (!await checkDirectory()) return []
       const names = (await readdir(directory)).filter(name => idPattern.test(name.replace(/\.json$/, '')) && name.endsWith('.json'))
-      if (names.length > 1000) throw new StoryError(503, '로컬 이야기 목록의 한도를 초과했어요.')
+      if (!logs && names.length > 1000) throw new StoryError(503, '로컬 이야기 목록의 한도를 초과했어요.')
       const items = []
       for (const name of names) {
         const data = await read(name.slice(0, -5))
-        items.push({ id: data.id, title: data.title, author: data.passwordHash ? '' : data.author, createdAt: data.createdAt, updatedAt: data.updatedAt, ...(data.writtenOn ? { writtenOn: data.writtenOn } : {}), protected: data.passwordHash !== null })
+        items.push({ id: data.id, title: data.title, author: data.passwordHash ? '' : data.author, createdAt: data.createdAt, updatedAt: data.updatedAt, ...(data.writtenOn ? { writtenOn: data.writtenOn } : {}), protected: data.passwordHash !== null, ...(logs ? metadataFromLog(data.body) : {}) })
       }
       return items.sort(compareStories)
     },
     async get(id: string, password?: string, owner = false) {
-      const data = await read(id)
+      const wrongPassword = () => logs && !owner ? new StoryError(404, '비밀번호가 다릅니다.') : unavailable()
+      const data = await read(id).catch(error => { if (error instanceof StoryError && error.status === 404) throw wrongPassword(); throw error })
       if (data.passwordHash && !owner) {
-        if (typeof password !== 'string' || !password) throw unavailable()
+        if (typeof password !== 'string' || !password) throw wrongPassword()
         const [salt, expected] = data.passwordHash.split(':')
         const actual = await derive(password, salt, 64) as Buffer
-        if (!timingSafeEqual(actual, Buffer.from(expected, 'hex'))) throw unavailable()
+        if (!timingSafeEqual(actual, Buffer.from(expected, 'hex'))) throw wrongPassword()
       }
       return present(data)
     },
@@ -78,6 +82,10 @@ export function createLocalStoryStore(repo: string) {
         const id = request.id === undefined ? randomUUID() : request.id
         if (typeof id !== 'string' || !idPattern.test(id)) throw unavailable()
         const previous = request.id === undefined ? null : await read(id)
+        if (logs) {
+          if (!previous && (typeof request.password !== 'string' || !request.password.trim()) || request.password !== null && (typeof request.password !== 'string' || !request.password.trim())) throw new StoryError(400, '로그에는 비밀번호가 필요해요.')
+          try { parseTrpgLog(draft.body) } catch { throw new StoryError(400, '시네마틱 로그 형식을 확인해 주세요.') }
+        }
         if (previous && previous.revision !== request.revision) throw new StoryError(409, '다른 곳에서 수정된 글이에요. 작성 내용을 복사한 뒤 목록에서 다시 열어 주세요.')
         let passwordHash = previous?.passwordHash ?? null
         // null preserves the current password; empty string removes it.
@@ -105,12 +113,12 @@ export function createLocalStoryStore(repo: string) {
   }
 }
 
-export function createLocalStoryMiddleware(repo: string) {
-  const store = createLocalStoryStore(repo)
+export function createLocalStoryMiddleware(repo: string, { logs = false } = {}) {
+  const store = createLocalStoryStore(repo, { logs })
   const attempts = new Map<string, { count: number, until: number }>()
   return async (request: IncomingMessage, response: ServerResponse, next: () => void) => {
     const path = (request.url ?? '').split('?')[0]
-    if (!path.startsWith('/kirari/__local/stories')) { next(); return }
+    if (!path.startsWith(logs ? '/kirari/__local/trpg-logs' : '/kirari/__local/stories')) { next(); return }
     function reply(status: number, data: unknown) {
       response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin' })
       response.end(JSON.stringify(data))
@@ -123,10 +131,10 @@ export function createLocalStoryMiddleware(repo: string) {
         || request.headers['x-kirari-local'] !== '1'
         || request.headers.origin && request.headers.origin !== `http://${host}`
         || request.headers['sec-fetch-site'] && request.headers['sec-fetch-site'] !== 'same-origin') throw new StoryError(403, '이 기능은 같은 기기의 로컬 화면에서만 사용할 수 있어요.')
-      const match = /^\/kirari\/__local\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/.exec(path)
+      const match = (logs ? /^\/kirari\/__local\/trpg-logs(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/ : /^\/kirari\/__local\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/).exec(path)
       if (!match) throw unavailable()
       const [, id, action] = match
-      if (request.method === 'GET' && !action) { reply(200, id ? await store.get(id) : await store.list()); return }
+      if (request.method === 'GET' && !action) { reply(200, id ? await store.get(id) : logs ? (await store.list()).map(item => ({ id: item.id, title: item.title, logDate: item.logDate ?? null, preview: item.preview ?? null, editable: request.headers['x-kirari-local-author'] === '1' })) : await store.list()); return }
       // Local author access is intentionally separate from the reader password.
       if (request.method === 'GET' && id && action === 'edit') { reply(200, await store.get(id, undefined, true)); return }
       if (request.method !== 'POST' || request.headers['content-type'] !== 'application/json') throw new StoryError(405, '지원하지 않는 요청이에요.')
@@ -139,7 +147,7 @@ export function createLocalStoryMiddleware(repo: string) {
       let size = 0
       for await (const chunk of request) {
         size += Buffer.byteLength(chunk)
-        if (size > MAX_BYTES) throw new StoryError(413, '글의 용량이 너무 커요.')
+        if (!logs && size > MAX_BYTES) throw new StoryError(413, '글의 용량이 너무 커요.')
         chunks.push(Buffer.from(chunk))
       }
       let body: unknown

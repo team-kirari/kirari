@@ -86,5 +86,5 @@ export function createProfiles(): Profiles {
 }
 
 export function personalityTags(value: string): string[] {
-  return [...new Set(value.split(/[,#\n]+/).map(tag => tag.trim()).filter(Boolean))].slice(0, 8)
+  return [...new Set(value.split(/[,#\n]+/).map(tag => tag.trim()).filter(Boolean))]
 }

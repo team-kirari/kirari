@@ -33,17 +33,20 @@ export function useSiteSettings() {
     return () => { active = false; window.clearTimeout(timeout); unsubscribe?.(); store.current = null }
   }, [])
   async function save() {
-    if (!draft || !store.current || !ready || saving) return
+    if (!draft || !store.current || !ready || saving) return false
     setSaving(true)
     try {
       await store.current.save(draft)
+      setPublished(previous => previous.revision > draft.revision ? previous : { ...draft, revision: draft.revision + 1 })
       setDraft(null); setStatus('모두에게 보이는 화면으로 저장했습니다.')
+      return true
     } catch (error) {
       setStatus(error instanceof Error && error.message === 'settings-conflict'
         ? '다른 관리자가 먼저 저장했습니다. 편집 취소 후 최신 설정으로 다시 편집해 주세요.'
         : error instanceof Error && error.message === 'invalid-settings'
         ? 'D-day 이름·날짜와 위젯 위치를 확인해 주세요. 올바른 설정만 저장할 수 있습니다.'
         : '저장하지 못했습니다. 네트워크와 관리자 권한을 확인한 뒤 다시 시도해 주세요.')
+      return false
     } finally { setSaving(false) }
   }
   return { published, draft, setDraft, ready, loading, saving, save, status: getFirebaseConfig(import.meta.env) ? status : '' }

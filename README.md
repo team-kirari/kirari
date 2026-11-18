@@ -13,6 +13,7 @@
 
 현재는 외관 미리보기 앱을 구현한 단계입니다. 비공개 원본 저장소를 `.local/kirari-private`에 clone한 뒤 `npm ci`, `npm run dev`로 실행할 수 있습니다.
 홈 위젯, 프로필, 갤러리와 이미지 확대, 이야기·기록의 준비 화면, 로컬 방명록 시연을 제공합니다.
+주사위 아이콘의 **로그** 카테고리는 시네마틱 HTML 등록, private 저장소 보관, 서버 비밀번호 확인 후 일반·시네마틱 열람을 제공합니다. 코드 구현 단계이며 이번 기능의 운영 배포와 실제 화면 확인은 아직 수행하지 않았습니다. [지원 형식·저장·검증 안내](docs/trpg-logs.md)를 참고하세요.
 Discord·방명록·메시지의 서버 저장은 아직 구현하지 않았습니다. 공용 화면 설정과 좋아요는 Firebase Cloud Firestore를 사용합니다. GitHub Pages 배포 워크플로는 `.github/workflows/pages.yml`에 구성되어 있습니다.
 관리자 로그인은 Firebase Authentication의 Google 팝업 로그인을 사용합니다. 이메일 인증·Google 로그인 공급자와 Firestore `admins/{uid}`의 `enabled: true`를 확인해 관리자 상태를 표시합니다. 관리자 이메일·UID 목록은 앱 코드에 포함하지 않습니다. 등록·해제는 Firebase Console에서 관리하며 [설정 안내](docs/site-settings.md)를 참고하세요.
 실제 사용에는 Firebase 웹 앱 설정이 필요합니다. [관리자 로그인 설정 안내](docs/admin-login.md)를 따르세요.

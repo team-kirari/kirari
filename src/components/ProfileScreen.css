@@ -143,7 +143,6 @@
 .dossier-edit-grid :is(input,textarea,select) { width: 100%; border: 1px solid #dfe6ef; border-radius: 8px; padding: 10px; color: #435771; background: white; font: inherit; line-height: 1.7; }
 .dossier-edit-grid textarea { resize: vertical; }
 .dossier-editor-actions { display: flex; gap: 10px; justify-content: flex-end; padding-top: 15px; }
-[data-theme=monochrome] .character-dossier { --character-color: #888 !important; }
 .identity-color { display: flex; align-items: center; gap: 8px; border-top: 1px solid #e8ecf2; padding-top: 16px; margin-top: 16px; font-size: 10px; }
 .identity-color code { margin-left: auto; }
 .character-dossier [aria-disabled=true] { cursor: progress; }

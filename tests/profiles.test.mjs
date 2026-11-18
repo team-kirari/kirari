@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createProfiles, parsePublishedProfile, validProfile, validPhotoSelection, emptyPhotoSelection, profileFullName, profileAge } from '../src/lib/profiles.ts'
+import { createProfiles, parsePublishedProfile, validProfile, validPhotoSelection, emptyPhotoSelection, profileFullName, profileAge, personalityTags } from '../src/lib/profiles.ts'
+
+test('all configured tags survive parsing beyond three and eight, without blank or duplicate tags', () => {
+  const tags = Array.from({ length: 12 }, (_, index) => `tag${index}`)
+  assert.deepEqual(personalityTags(` #${tags.join(', #')}\n#tag0, ,`), tags)
+  assert.deepEqual(personalityTags(' ,#\n '), [])
+  assert.deepEqual(personalityTags('<script>alert(1)</script>, javascript:alert(1)'), ['<script>alert(1)</script>', 'javascript:alert(1)'])
+})
 
 test('published profiles require a complete bounded schema and a safe revision', () => {
   const profile = createProfiles().kenji

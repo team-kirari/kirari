@@ -13,6 +13,7 @@ export const navigation = [
   { id: 'gallery', label: '갤러리' },
   { id: 'story', label: '이야기' },
   { id: 'log', label: '타임라인' },
+  { id: 'trpg', label: '로그' },
   { id: 'guest', label: '방명록' },
 ] as const
 export type Route = typeof navigation[number]['id'] | 'not-found'

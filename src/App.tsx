@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { preparePage } from './lib/prepare-page'
-import { ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Heart, Home, Image as ImageIcon, MessageCircle, MoreHorizontal, Palette, Search, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
+import { ArrowUpRight, BookOpen, CalendarDays, Dices, Heart, Home, Image as ImageIcon, MessageCircle, MoreHorizontal, Palette, Search, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
 import { art, gallery, navigation } from './content'
 import type { Route } from './content'
 import { useSelectionIndicator } from './components/useSelectionIndicator'
@@ -31,17 +31,19 @@ import { GalleryScreen } from './components/GalleryScreen'
 import { TimelineScreen } from './components/TimelineScreen'
 import { useGallery } from './lib/useGallery'
 import { StoryScreen } from './components/StoryScreen'
+import { TrpgLogScreen } from './components/TrpgLogScreen'
+import { readTheme, saveTheme, resetTheme } from './lib/theme'
+import type { Theme } from './lib/theme'
 import { personalityTags } from './lib/profiles'
 import type { CharacterProfile, PersonId, Profiles } from './lib/profiles'
 
 type Navigate = (route: Route, event?: MouseEvent<HTMLElement>, person?: PersonId) => void
-const icons = { home: Home, profile: Users, gallery: ImageIcon, story: BookOpen, log: CalendarDays, guest: MessageCircle }
+const icons = { home: Home, profile: Users, gallery: ImageIcon, story: BookOpen, log: CalendarDays, trpg: Dices, guest: MessageCircle }
 const themes = {
   blue: { accent: '#8ba5cb', pale: '#dce7f5', ink: '#526988', pink: '#d8a4b9', background: '#f1f5fb' },
   pink: { accent: '#bf8fa9', pale: '#f1deea', ink: '#805e78', pink: '#a4b3d3', background: '#faf2f6' },
   monochrome: { accent: '#777777', pale: '#e5e5e5', ink: '#333333', pink: '#999999', background: '#f4f4f4' },
 }
-type Theme = keyof typeof themes
 function readRoute(): Route {
   const id = window.location.hash.slice(1).split('?')[0] || 'home'
   return navigation.some(item => item.id === id) ? id as Route : 'not-found'
@@ -54,10 +56,13 @@ function WidgetTitle({ icon, children, action }: { icon?: ReactNode, children: R
 function ProfileCard({ person, profile, navigate }: { person: PersonId, profile: CharacterProfile, navigate: Navigate }) {
   const [favorite, setFavorite] = useState(false)
   const isKenji = person === 'kenji'
+  const tags = personalityTags(profile.tags)
+  const details = [['나이', profile.age], ['생일', profile.birthday], ['키', profile.height ? `${profile.height} cm` : ''], ['성격', profile.outside], ['좋아하는 것', profile.likes]].filter(([, value]) => value.trim())
   return <section className={`widget profile-card ${person}`} data-widget-id={person} aria-label={`${profile.name} 프로필`}>
     <div className="profile-label"><span>{isKenji ? 'KENJI' : 'KIYO'}</span><span className="widget-actions"><button className="bare" aria-label={`${isKenji ? '켄지' : '키요'} 좋아요`} aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'} /></button></span></div>
-    <div className="profile-content"><button className="avatar" aria-label="프로필 보기" onClick={e => navigate('profile', e, person)}><img src={isKenji ? art.kenji : art.kiyo} alt="" /></button><div><button className="person-name bare" onClick={e => navigate('profile', e, person)}>{profile.name}<ArrowUpRight size={13} /></button><p>{profile.originalName || (isKenji ? 'Kenji' : 'Kiyo')}</p><span className="profile-dot">캐릭터 프로필</span></div></div>
-    <div className="tag-row">{(personalityTags(profile.tags).length ? personalityTags(profile.tags).slice(0, 3) : [profile.name, isKenji ? '블루' : '핑크', 'kirari']).map(tag => <span key={tag}>#{tag}</span>)}</div>
+    <div className="profile-content"><button className="avatar" aria-label="프로필 보기" onClick={e => navigate('profile', e, person)}><img src={isKenji ? art.kenji : art.kiyo} alt="" /></button><div><button className="person-name bare" onClick={e => navigate('profile', e, person)}>{profile.name}<ArrowUpRight size={13} /></button><p>{profile.originalName || (isKenji ? 'Kenji' : 'Kiyo')}</p><span className="profile-dot">{profile.quote || '아직 한마디가 없어요'}</span></div></div>
+    <div className="tag-row">{tags.map(tag => <span key={tag}>#{tag}</span>)}</div>
+    <div className="profile-preview"><dl>{details.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><button className="bare" onClick={e => navigate('profile', e, person)}>프로필 자세히 보기 <ArrowUpRight size={12} /></button></div>
   </section>
 }
 
@@ -126,16 +131,17 @@ function HomeScreen({ photos, profiles, writer, admin, music, guest, navigate, h
   </div>
 }
 
-function InnerScreen({ localGallery, route, navigate, query, setQuery, guest, admin, sharedProfiles, profilePerson }: { localGallery: ReturnType<typeof useGallery>, profilePerson: PersonId, sharedProfiles: ReturnType<typeof useSharedProfiles>, admin: boolean, route: Route, navigate: Navigate, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
-  const info = { profile: ['프로필', ''], gallery: ['갤러리', ''], story: ['이야기', ''], log: ['타임라인', ''], guest: ['방명록', ''], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''] }[route]
-  return <section className="inner-screen" data-page-loading={route === 'profile' ? !sharedProfiles.ready && !sharedProfiles.status : route === 'gallery' ? localGallery.loading : false}><button className="back-link" onClick={e => navigate('home', e)}><ArrowLeft size={15} /> 홈으로</button><div className="page-heading"><div><>{route === 'not-found' && <span className="page-kicker">kirari <span>/</span> 404</span>}<h1 tabIndex={-1}>{info[0]}<span>✦</span></h1>{info[1] && <p>{info[1]}</p>}</></div>{route !== 'profile' && <span className="page-icon">{route === 'not-found' ? <Search size={28} /> : (() => { const Icon = icons[route]; return <Icon size={28} strokeWidth={1.5} /> })()}</span>}</div>
+function InnerScreen({ localGallery, route, query, setQuery, guest, admin, sharedProfiles, profilePerson }: { localGallery: ReturnType<typeof useGallery>, profilePerson: PersonId, sharedProfiles: ReturnType<typeof useSharedProfiles>, admin: boolean, route: Route, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
+  const info = { profile: ['프로필', ''], gallery: ['갤러리', ''], story: ['이야기', ''], log: ['타임라인', ''], trpg: ['로그', ''], guest: ['방명록', ''], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''] }[route]
+  return <section className="inner-screen" data-page-loading={route === 'profile' ? !sharedProfiles.ready && !sharedProfiles.status : route === 'gallery' ? localGallery.loading : false}><div className="page-heading"><div><>{route === 'not-found' && <span className="page-kicker">kirari <span>/</span> 404</span>}<h1 tabIndex={-1}>{info[0]}<span>✦</span></h1>{info[1] && <p>{info[1]}</p>}</></div>{route !== 'profile' && <span className="page-icon">{route === 'not-found' ? <Search size={28} /> : (() => { const Icon = icons[route]; return <Icon size={28} strokeWidth={1.5} /> })()}</span>}</div>
     {route === 'gallery' && <GalleryScreen query={query} setQuery={setQuery} admin={admin} gallery={localGallery} />}
     {route === 'profile' && !sharedProfiles.ready && !sharedProfiles.status && <p role="status">프로필을 불러오는 중…</p>}
     {route === 'profile' && (sharedProfiles.ready || sharedProfiles.status) && <ProfileScreen initialPerson={profilePerson} admin={admin} shared={sharedProfiles} />}
     {route === 'story' && <StoryScreen admin={admin} />}
     {route === 'log' && <TimelineScreen admin={admin} />}
+    {route === 'trpg' && <TrpgLogScreen key={String(admin)} admin={admin} />}
     {route === 'guest' && <GuestScreen guest={guest} admin={admin} />}
-    {route === 'not-found' && <div className="empty-state"><span className="error-number">404</span><button className="primary-button" onClick={e => navigate('home', e)}>홈으로 돌아가기 <ArrowUpRight size={16} /></button></div>}
+    {route === 'not-found' && <div className="empty-state"><span className="error-number">404</span></div>}
   </section>
 }
 
@@ -147,13 +153,24 @@ export default function App() {
   const sharedProfiles = useSharedProfiles()
   const [profilePerson, setProfilePerson] = useState<PersonId>('kenji')
   const [route, setRoute] = useState<Route>(readRoute)
-  const [theme, setTheme] = useState<Theme>('blue')
+  const [theme, setTheme] = useState<Theme>(() => {
+    try { return readTheme(window.localStorage) } catch { return 'blue' }
+  })
+  const [themeStatus, setThemeStatus] = useState('')
+  function selectTheme(next: Theme, reset = false) {
+    setTheme(next)
+    try {
+      if (reset) resetTheme(window.localStorage)
+      else saveTheme(window.localStorage, next)
+      setThemeStatus(reset ? '테마를 기본값으로 초기화했습니다.' : '이 브라우저에 테마를 저장했습니다.')
+    } catch { setThemeStatus('테마를 저장하지 못했습니다. 현재 화면에만 적용됩니다.') }
+  }
   const [settings, setSettings] = useState(false)
   const [admin, setAdmin] = useState(false)
   const [writer, setWriter] = useState<MessageWriter | null>(null)
   const shared = useSiteSettings()
   const { setDraft } = shared
-  const editing = admin && shared.draft !== null
+  const editing = admin && route === 'home' && shared.draft !== null
   const appearance = editing ? shared.draft! : shared.published
   const { hero, feather, ddays } = appearance
   // Visitor moves live only in React state and never enter the shared draft.
@@ -187,8 +204,17 @@ export default function App() {
   const topNavigation = useSelectionIndicator<HTMLElement>(route)
   const sideNavigation = useSelectionIndicator<HTMLElement>(route)
   const currentTheme = themes[theme]
-  const settingsRef = useRef<HTMLDivElement>(null)
   const settingsToggle = useRef<HTMLButtonElement>(null)
+  const cancelSettings = useCallback(() => {
+    setDraft(null)
+    setSettings(false)
+    settingsToggle.current?.focus()
+  }, [setDraft])
+  function toggleSettings() {
+    if (shared.saving || route !== 'home') return
+    if (settings) cancelSettings()
+    else if (shared.ready) { setDraft(shared.published); setSettings(true) }
+  }
   const activeRoute = useRef(route)
   const changeRoute = useCallback((next: Route, origin?: { x: number, y: number }) => {
     if (activeRoute.current === next) return
@@ -203,6 +229,8 @@ export default function App() {
         setPhotoIndex(previous => (previous + 1 + Math.floor(Math.random() * (gallery.length - 1))) % gallery.length)
       }
       if (returningHome) setPlayEntrance(true)
+      setDraft(null)
+      setSettings(false)
       setPendingRoute(next)
     })
     const destination = pageRoots.current.get(next)
@@ -221,7 +249,7 @@ export default function App() {
       transition.current.play(origin?.x ?? window.innerWidth / 2, origin?.y ?? window.innerHeight / 2,
         next === 'gallery' || next === 'guest' ? '#f1dce7' : currentTheme.pale, commit, ready)
     } else commit()
-  }, [currentTheme.pale])
+  }, [currentTheme.pale, setDraft])
   useEffect(() => {
     const sync = () => changeRoute(readRoute())
     window.addEventListener('hashchange', sync)
@@ -232,12 +260,10 @@ export default function App() {
   }, [route])
   useEffect(() => {
     if (!settings) return
-    function dismiss(event: PointerEvent) { if (!settingsRef.current?.contains(event.target as Node) && !settingsToggle.current?.contains(event.target as Node)) setSettings(false) }
-    function escape(event: KeyboardEvent) { if (event.key === 'Escape') { setSettings(false); settingsToggle.current?.focus() } }
-    window.addEventListener('pointerdown', dismiss)
+    function escape(event: KeyboardEvent) { if (event.key === 'Escape' && !shared.saving) cancelSettings() }
     window.addEventListener('keydown', escape)
-    return () => { window.removeEventListener('pointerdown', dismiss); window.removeEventListener('keydown', escape) }
-  }, [settings])
+    return () => window.removeEventListener('keydown', escape)
+  }, [settings, shared.saving, cancelSettings])
 
   const navigate: Navigate = (next, event, person) => {
     if (next === activeRoute.current) return
@@ -254,14 +280,14 @@ export default function App() {
   const variables = { '--accent': currentTheme.accent, '--pale': currentTheme.pale, '--ink': currentTheme.ink, '--pink': currentTheme.pink, '--page-bg': currentTheme.background } as CSSProperties
   return <div className="app-shell" data-theme={theme} style={variables}>
     <a className="skip-link" href="#main">본문으로 건너뛰기</a>
-    <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); navigate('gallery') }}><Search size={15} /><input aria-label="공개 그림 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav ref={topNavigation} className="selection-track" aria-label="메인 메뉴"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => setTheme(t)} />)}</div>{admin && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" onClick={() => setSettings(!settings)}><SlidersHorizontal size={18} /></button>}</header>
+    <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); navigate('gallery') }}><Search size={15} /><input aria-label="공개 그림 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav ref={topNavigation} className="selection-track" aria-label="메인 메뉴"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => selectTheme(t)} />)}</div><span className="theme-spacer" aria-hidden="true" />{admin && route === 'home' && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" disabled={!shared.ready || shared.saving} onClick={toggleSettings}><SlidersHorizontal size={18} /></button>}</header>
+    {themeStatus && <p className="theme-status" role="status">{themeStatus}</p>}
     {shared.status && <p className="site-settings-status" role="status">{shared.status}</p>}
-    <div className="workspace"><aside ref={sideNavigation} className="side-rail selection-track" aria-label="바로가기"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><div className="page-stack">{[route, ...(pendingRoute && pendingRoute !== route ? [pendingRoute] : [])].map(screen => <main key={screen} ref={element => { if (element) pageRoots.current.set(screen, element); else pageRoots.current.delete(screen) }} className={`page-transition ${screen !== route ? 'page-preparing' : ''}`} id={screen === route ? 'main' : undefined} aria-hidden={screen !== route || undefined} inert={screen !== route} tabIndex={-1}>{screen === 'home' ? <HomeScreen photos={localGallery.items} profiles={sharedProfiles.profiles} writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen localGallery={localGallery} profilePerson={profilePerson} sharedProfiles={sharedProfiles} admin={admin} guest={guest} route={screen} navigate={navigate} query={query} setQuery={setQuery} />}</main>)}</div></div>
+    <div className="workspace"><aside ref={sideNavigation} className="side-rail selection-track" aria-label="바로가기"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && route === 'home' && <button aria-label="화면 설정 열기" aria-expanded={settings} disabled={!shared.ready || shared.saving} onClick={toggleSettings}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><div className="page-stack">{[route, ...(pendingRoute && pendingRoute !== route ? [pendingRoute] : [])].map(screen => <main key={screen} ref={element => { if (element) pageRoots.current.set(screen, element); else pageRoots.current.delete(screen) }} className={`page-transition ${screen !== route ? 'page-preparing' : ''}`} id={screen === route ? 'main' : undefined} aria-hidden={screen !== route || undefined} inert={screen !== route} tabIndex={-1}>{screen === 'home' ? <HomeScreen photos={localGallery.items} profiles={sharedProfiles.profiles} writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen localGallery={localGallery} profilePerson={profilePerson} sharedProfiles={sharedProfiles} admin={admin} guest={guest} route={screen} query={query} setQuery={setQuery} />}</main>)}</div></div>
     <footer><span><i /> kirari <span className="footer-divider">/</span> 켄지 & 키요</span><div className="admin-login-bar"><AdminLogin onAdminChange={onAdminChange} /></div></footer>
-    {admin && settings && <div ref={settingsRef} className="settings-panel widget" id="appearance-settings">
-      <WidgetTitle icon={<Palette size={16} />} action={<button className="bare" aria-label="설정 닫기" onClick={() => { setSettings(false); settingsToggle.current?.focus() }}><X size={16} /></button>}>화면 설정</WidgetTitle>
+    {admin && route === 'home' && settings && editing && <div className="settings-panel widget" id="appearance-settings">
+      <WidgetTitle icon={<Palette size={16} />} action={<button className="bare" aria-label="설정 닫고 취소" disabled={shared.saving} onClick={cancelSettings}><X size={16} /></button>}>공용 화면 편집</WidgetTitle>
       <p>일러스트·D-day·배치는 모든 방문자에게 공개됩니다.</p>
-      {!editing ? <button className="primary-button" disabled={!shared.ready || shared.saving} onClick={() => { shared.setDraft(shared.published); navigate('home'); setSettings(true) }}>공용 화면 편집</button> : <>
       <fieldset className="appearance-fields" disabled={shared.saving}>
       <p>메인 일러스트</p>
       <div className="art-options"><button aria-pressed={hero === 'portrait'} onClick={() => setHero('portrait')}><img src={art.portrait} alt="페어 커미션" /></button><button aria-pressed={hero === 'pair'} onClick={() => setHero('pair')}><img src={art.pair} alt="작은 페어 일러스트" /></button></div>
@@ -279,13 +305,12 @@ export default function App() {
       <button className="soft-button reset-widget-positions" disabled={!shared.ready} onClick={() => setWidgetPositions(shared.published.positions)}>위젯 위치 초기화</button>
       <small>데스크톱에서 위젯을 드래그하거나 방향키로 이동하세요. 모바일은 기본 배치를 유지합니다.</small>
       </fieldset>
-      <div className="appearance-actions"><button className="primary-button" disabled={shared.saving || !shared.ready} onClick={() => void shared.save()}>{shared.saving ? '저장 중…' : '모두에게 적용 · 저장'}</button><button className="soft-button" disabled={shared.saving} onClick={() => shared.setDraft(null)}>편집 취소</button></div>
-      <small>저장 전에는 내 화면에서만 미리 보입니다. 옵션을 닫고 배치한 뒤 다시 열어 저장하세요.</small>
-      </>}
+      <div className="appearance-actions"><button className="primary-button" disabled={shared.saving || !shared.ready} onClick={async () => { if (await shared.save()) { setLocalPositions(null); setSettings(false); settingsToggle.current?.focus() } }}>{shared.saving ? '저장 중…' : '모두에게 적용 · 저장'}</button><button className="soft-button" disabled={shared.saving} onClick={cancelSettings}>편집 취소</button></div>
+      <small>저장 전에는 내 화면에서만 미리 보입니다. 창을 연 채 위젯을 배치하세요. X·Esc·편집 취소 또는 다른 화면으로 이동하면 변경을 버립니다.</small>
       <p role="status">{shared.status}</p>
     </div>}
 
-    {editing && <div className="editing-banner" role="status">공용 화면 편집 중 · 아직 저장되지 않았습니다 <button className="soft-button" onClick={() => setSettings(true)}>옵션 열기</button></div>}
+    {editing && <div className="editing-banner" role="status">공용 화면 편집 중 · 아직 저장되지 않았습니다</div>}
     <div className="youtube-player" ref={musicHost} aria-hidden="true" />
     <LiquidTransition ref={transition} />
   </div>
