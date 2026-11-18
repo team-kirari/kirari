@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { handleUpload } from '../worker/index.mjs'
+import { handleUpload, commitPhotoBatch } from '../worker/index.mjs'
 import worker from '../worker/stories.mjs'
 
 function png() {
@@ -100,4 +100,71 @@ test('accepts APNG MIME and images above former size and dimension limits', asyn
   bytes.writeUInt32BE(8000, 16); bytes.writeUInt32BE(6000, 20)
   const response = await handleUpload(request({ mime: 'image/apng', body: bytes }), env, mockFetch(async (_url, options) => ({ status: options.method === 'PUT' ? 201 : 404 })))
   assert.equal(response.status, 202)
+})
+
+function batchRequest(count, { corrupt = false } = {}) {
+  const form = new FormData()
+  for (let i = 0; i < count; i++) {
+    const body = png(); body.writeUInt32BE(i + 1, 16)
+    form.append('photos', new Blob([corrupt && i === count - 1 ? '<svg/>' : body], { type: 'image/png' }), `photo-${i}.png`)
+  }
+  form.append('metadata', JSON.stringify(Array.from({ length: count }, (_, i) => ({ title: `photo-${i}`, album: 'Album', tags: [], credit: 'Test artist' }))))
+  return new Request('https://upload.example/?target=gallery&batch=upload', { method: 'POST', headers: { Origin: 'https://team-kirari.github.io', Authorization: 'Bearer fake-id-token' }, body: form })
+}
+
+test('one request with any selection size makes one commit; retries cannot redeploy it', async () => {
+  for (const count of [1, 3, 14]) {
+    let published = false, updates = 0, trees = 0, blobs = 0, conflicts = 0
+    const storage = async (url, options) => {
+      if (url.includes('/contents/staging/')) return new Response(null, { status: 404 })
+      if (url.endsWith('/git/blobs')) {
+        const record = JSON.parse(Buffer.from(JSON.parse(options.body).content, 'base64').toString())
+        assert.equal(record.metadata.credit, 'Test artist')
+        const sha = (blobs++ % count + 1).toString(16).padStart(40, '0')
+        return Response.json({ sha }, { status: 201 })
+      }
+      if (url.endsWith('/git/ref/heads/main')) return Response.json({ object: { sha: 'head' } })
+      if (url.includes('/contents/.photo-batches/')) return new Response(null, { status: published ? 200 : 404 })
+      if (url.endsWith('/git/commits/head')) return Response.json({ tree: { sha: 'base-tree' } })
+      if (url.endsWith('/git/trees')) {
+        trees++
+        const body = JSON.parse(options.body)
+        assert.equal(body.base_tree, 'base-tree')
+        assert.equal(body.tree.length, count + 1)
+        assert.equal(body.tree.filter(entry => entry.path.startsWith('staging/')).length, count)
+        return Response.json({ sha: 'new-tree' }, { status: 201 })
+      }
+      if (url.endsWith('/git/commits')) return Response.json({ sha: 'new-commit' }, { status: 201 })
+      assert.ok(url.endsWith('/git/refs/heads/main'))
+      assert.deepEqual(JSON.parse(options.body), { sha: 'new-commit', force: false })
+      if (count === 3 && conflicts++ === 0) return new Response(null, { status: 422 })
+      updates++; published = true
+      return Response.json({})
+    }
+    for (let retry = 0; retry < 2; retry++) {
+      const response = await handleUpload(batchRequest(count), env, mockFetch(storage))
+      assert.equal(response.status, 202)
+      const result = await response.json()
+      assert.equal(result.status, 'staged')
+      assert.equal(result.results.length, count)
+    }
+    assert.equal(updates, 1)
+    assert.equal(trees, count === 3 ? 2 : 1)
+  }
+})
+
+test('batch authorization, corrupt files, invalid paths and forged receipts fail safely', async () => {
+  assert.equal((await handleUpload(batchRequest(3), env, mockFetch(never, { enabled: false }))).status, 403)
+  assert.equal((await handleUpload(batchRequest(0), env, mockFetch(never))).status, 400)
+  let blobs = 0
+  const response = await handleUpload(batchRequest(3, { corrupt: true }), env, mockFetch(async (url) => {
+    if (url.includes('/contents/staging/')) return new Response(null, { status: 404 })
+    assert.ok(url.endsWith('/git/blobs'))
+    blobs++
+    return Response.json({ sha: 'a'.repeat(40) }, { status: 201 })
+  }))
+  assert.equal(response.status, 400)
+  assert.equal(blobs, 2)
+  await assert.rejects(commitPhotoBatch([{ path: '../private', sha: 'a'.repeat(40), proof: 'a'.repeat(64) }], env, never), TypeError)
+  await assert.rejects(commitPhotoBatch([{ path: `staging/gallery/${'a'.repeat(64)}.json`, sha: 'a'.repeat(40), proof: 'a'.repeat(64) }], env, never), TypeError)
 })

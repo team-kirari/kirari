@@ -15,17 +15,3 @@ export function photoUploadMetadata(filename: string, fields: PhotoFields): Phot
   if (!metadata) throw new Error('앨범과 저작권자 이름을 확인해 주세요.')
   return metadata
 }
-
-// Sequential requests keep each photo and its metadata together. A failed photo
-// does not undo accepted photos; callers retry only the remaining jobs.
-export async function uploadPhotoBatch<T>(jobs: readonly T[], send: (job: T) => Promise<boolean>, update: (job: T, result: { status: 'uploading' | 'staged' | 'duplicate' | 'error', error: string }) => void) {
-  for (const job of jobs) {
-    update(job, { status: 'uploading', error: '' })
-    try {
-      const duplicate = await send(job)
-      update(job, { status: duplicate ? 'duplicate' : 'staged', error: '' })
-    } catch (error) {
-      update(job, { status: 'error', error: error instanceof Error ? error.message : '등록에 실패했어요.' })
-    }
-  }
-}

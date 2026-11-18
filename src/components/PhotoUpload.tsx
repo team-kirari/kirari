@@ -4,7 +4,7 @@ import { validateProfileImage } from '../lib/profile-images'
 import { getFirebaseConfig } from '../lib/auth'
 import { copyrightLabel } from '../lib/gallery-catalog'
 import type { GalleryImage } from '../lib/gallery-storage'
-import { collectPhotoTags, photoUploadMetadata, uploadPhotoBatch } from '../lib/photo-upload'
+import { collectPhotoTags, photoUploadMetadata } from '../lib/photo-upload'
 import type { PhotoFields } from '../lib/photo-upload'
 import './PhotoUpload.css'
 
@@ -103,18 +103,26 @@ function UploadForm({ items, close, busy, setBusy }: { items: readonly GalleryIm
       await auth.authStateReady()
       if (!auth.currentUser) throw new Error('관리자 로그인이 필요해요.')
       url.searchParams.set('target', 'gallery')
-      await uploadPhotoBatch(jobs, async ({ photo, metadata }) => {
+      url.searchParams.set('batch', 'upload')
+      const form = new FormData()
+      for (const { photo } of jobs) {
         await validateProfileImage(photo.file)
-        const user = auth.currentUser
-        if (!user) throw new Error('다시 로그인해 주세요.')
-        const token = await user.getIdToken()
-        const response = await fetch(url, { method: 'POST', credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(60000), headers: { Authorization: `Bearer ${token}`, 'Content-Type': photo.file.type, 'X-Photo-Credit': encodeURIComponent(metadata.credit), 'X-Photo-Metadata': encodeURIComponent(JSON.stringify(metadata)) }, body: photo.file })
-        if (!response.ok) throw new Error(response.status === 401 ? '다시 로그인해 주세요.' : response.status === 403 ? '관리자 권한이 필요해요.' : response.status === 429 ? '잠시 후 다시 등록해 주세요.' : '등록에 실패했어요. 다시 시도해 주세요.')
-        const result = await response.json() as { status?: unknown, duplicate?: unknown }
-        if (result.status !== 'staged') throw new Error('접수 결과를 확인하지 못했어요. 다시 시도해 주세요.')
-        return result.duplicate === true
-      }, ({ photo }, result) => update(photo.id, result))
-    } catch (error) { setError(error instanceof Error ? error.message : '등록에 실패했어요.') }
+        form.append('photos', photo.file)
+        update(photo.id, { status: 'uploading', error: '' })
+      }
+      form.append('metadata', JSON.stringify(jobs.map(job => job.metadata)))
+      const token = await auth.currentUser.getIdToken()
+      const response = await fetch(url, { method: 'POST', credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(180000), headers: { Authorization: `Bearer ${token}` }, body: form })
+      if (!response.ok) throw new Error(response.status === 401 ? '다시 로그인해 주세요.' : response.status === 403 ? '관리자 권한이 필요해요.' : response.status === 429 ? '잠시 후 다시 등록해 주세요.' : '일괄 등록에 실패했어요. 다시 시도해 주세요.')
+      const result = await response.json() as { status?: unknown, results?: { duplicate?: unknown }[] }
+      if (result.status !== 'staged' || !Array.isArray(result.results) || result.results.length !== jobs.length) throw new Error('접수 결과를 확인하지 못했어요. 다시 시도해 주세요.')
+      jobs.forEach(({ photo }, index) => update(photo.id, { status: result.results![index].duplicate === true ? 'duplicate' : 'staged', error: '' }))
+      close()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '등록에 실패했어요.'
+      for (const { photo } of jobs) update(photo.id, { status: 'error', error: message })
+      setError(message)
+    }
     finally { setBusy(false) }
   }
   return <form onSubmit={event => { event.preventDefault(); void upload() }}>
