@@ -5,6 +5,7 @@ import { buildStoryIndex, createStoryStore, StoryStoreConflict, STORY_REPO, vali
 import { parseTrpgLog } from '../src/lib/trpg-logs.ts'
 import { compareLogs, LOG_METADATA_VERSION } from '../src/lib/trpg-log-summary.ts'
 import { buildLogIndex, validLogIndex } from './log-index.mjs'
+import { handleSecretAlbums } from './secret-albums.mjs'
 
 const ORIGIN = 'https://team-kirari.github.io'
 const UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
@@ -145,6 +146,8 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
   }
 }
 export const handleTrpgLogs = (request, env, fetcher = fetch) => handleStories(request, env, fetcher, { logs: true })
+export const handleAlbums = (request, env, fetcher = fetch) => handleSecretAlbums(request, env, fetcher, identity)
 export default { fetch: (request, env) => new URL(request.url).pathname === '/photos'
   ? handleUpload(request, { ...env, PHOTO_GITHUB_WRITE_TOKEN: env.STORY_GITHUB_WRITE_TOKEN, UPLOAD_LIMITER: env.STORY_LIMITER, PHOTO_LOCAL_ORIGIN: env.STORY_LOCAL_ORIGIN })
+  : /^\/secret-albums(?:\/|$)/.test(new URL(request.url).pathname) ? handleAlbums(request, env)
   : /^\/logs(?:\/|$)/.test(new URL(request.url).pathname) ? handleTrpgLogs(request, env) : handleStories(request, env) }

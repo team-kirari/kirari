@@ -32,7 +32,7 @@ export function validIndex(items, maxItems = 100) {
 export class StoryStoreConflict extends Error {}
 
 // api returns a Response. Keep credentials and private file contents out of errors.
-export function createStoryStore(api, { directory = 'web-stories', validateArchive = validArchive, archiveBytes = 900_000, indexBytes = 900_000, maxItems = 100, rawArchive = false, buildIndex = buildStoryIndex, validateIndex = validIndex } = {}) {
+export function createStoryStore(api, { directory = 'web-stories', validateArchive = validArchive, archiveBytes = 900_000, indexBytes = 900_000, maxItems = 100, rawArchive = false, buildIndex = buildStoryIndex, validateIndex = validIndex, commitMessage } = {}) {
   async function readFile(name, ref, maxBytes, validate) {
     const raw = rawArchive
     const response = await api(`/contents/${directory}/${name}.json?ref=${encodeURIComponent(ref)}`, undefined, 'GET', raw)
@@ -88,7 +88,7 @@ export function createStoryStore(api, { directory = 'web-stories', validateArchi
     readArchive,
     readIndex: () => readFile('index', 'main', indexBytes, items => validateIndex(items, maxItems)),
     snapshot,
-    save: (snapshot, items) => commitFiles(snapshot, [['archive', items], ['index', buildIndex(items)]], rawArchive ? 'Save TRPG log and index' : 'Save web story and index'),
+    save: (snapshot, items) => commitFiles(snapshot, [['archive', items], ['index', buildIndex(items)]], commitMessage ?? (rawArchive ? 'Save TRPG log and index' : 'Save web story and index')),
     async rebuildIndex() {
       const current = await snapshot()
       await commitFiles(current, [['index', buildIndex(current.items)]], 'Build web story index')

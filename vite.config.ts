@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
       fs: {
         strict: true,
         allow: [project, ...['img', 'gallery', 'profiles/kenji/old', 'profiles/kenji/new', 'profiles/kiyo/old', 'profiles/kiyo/new'].map(folder => resolve(assets, folder))],
-        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/stories/**', '**/trpg-logs/**', '**/web-trpg-logs/**', '**/staging/**'],
+        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/stories/**', '**/trpg-logs/**', '**/web-trpg-logs/**', '**/web-secret-albums/**', '**/staging/**'],
       },
     },
     base: '/kirari/',

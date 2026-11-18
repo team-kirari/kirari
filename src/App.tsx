@@ -164,7 +164,7 @@ export default function App() {
     try {
       if (reset) resetTheme(window.localStorage)
       else saveTheme(window.localStorage, next)
-      setThemeStatus(reset ? '테마를 기본값으로 초기화했습니다.' : '이 브라우저에 테마를 저장했습니다.')
+      setThemeStatus(reset ? '테마를 기본값으로 초기화했습니다.' : '')
     } catch { setThemeStatus('테마를 저장하지 못했습니다. 현재 화면에만 적용됩니다.') }
   }
   const [settings, setSettings] = useState(false)
