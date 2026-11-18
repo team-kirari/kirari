@@ -200,7 +200,7 @@ function ProfileEditor({ person, profile, photoSelection, onApply, onClose }: {
   return <dialog className="dossier-editor" ref={dialog} aria-labelledby="profile-editor-title" onCancel={event => { if (busy) event.preventDefault(); else onClose() }}>
     <form onSubmit={event => { event.preventDefault(); void apply() }}>
       <header><div><small>프로필 편집</small><h2 id="profile-editor-title">{identity[person].name}의 프로필</h2></div><button type="button" className="icon-button" disabled={busy} aria-label="편집 취소" onClick={onClose}><X size={18} /></button></header>
-      <p className="dossier-editor-notice">저장하면 모든 방문자에게 공개돼요. 사진은 갤러리의 ‘사진 등록’에서 마스터키로 등록하고 자동 배포가 끝나면 선택할 수 있어요.</p>
+      <p className="dossier-editor-notice">저장하면 모든 방문자에게 공개돼요. 사진은 갤러리의 ‘사진 업로드’에서 저작권자와 함께 등록하고 검증·배포가 끝나면 선택할 수 있어요.</p>
       {error && <p className="profile-photo-status is-error" role="alert">{error}</p>}
       {illustrationVersions.map(value => <fieldset key={value} className="profile-photo-editor" disabled={busy}>
         <legend>{versionLabels[value]} · 등장 사진 선택</legend>

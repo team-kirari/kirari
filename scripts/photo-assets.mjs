@@ -17,10 +17,19 @@ export async function listPhotos(root) {
   for (const folder of photoFolders) {
     let directory = base
     for (const segment of folder.split('/')) { directory = join(directory, segment); await realDirectory(directory) }
-    for (const name of await readdir(directory)) {
+    const names = await readdir(directory)
+    for (const name of names) {
       if (name === '.gitkeep') continue
       const path = join(directory, name)
       const info = await lstat(path)
+      if (/^[a-f0-9]{64}\.json$/.test(name) && folder !== 'img') {
+        if (!info.isFile() || info.isSymbolicLink() || !info.size || info.size > 2048 || !names.includes(name.replace(/\.json$/, '.webp'))) throw new Error('Invalid photo credit file')
+        const credit = JSON.parse(await readFile(path, 'utf8'))
+        if (!credit || Object.keys(credit).join(',') !== 'credit' || typeof credit.credit !== 'string' || !credit.credit.trim() || credit.credit.length > 120
+          || [...credit.credit].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error('Invalid photo credit')
+        files.push({ path, folder, name, metadata: true })
+        continue
+      }
       const mime = types[name.split('.').at(-1).toLowerCase()]
       if (!info.isFile() || info.isSymbolicLink() || !mime || !info.size || info.size > MAX_IMAGE_BYTES) throw new Error('Invalid photo file')
       inspectImage(new Uint8Array(await readFile(path)), mime)
@@ -44,7 +53,7 @@ export async function copyPhotos(source, destination, { mirror = false } = {}) {
       for (const name of await readdir(directory)) {
         if (name === '.gitkeep' || names.has(name)) continue
         const path = join(directory, name), info = await lstat(path)
-        if (!info.isFile() || info.isSymbolicLink() || !types[name.split('.').at(-1).toLowerCase()]) throw new Error('Unexpected destination file')
+        if (!info.isFile() || info.isSymbolicLink() || (!types[name.split('.').at(-1).toLowerCase()] && !/^[a-f0-9]{64}\.json$/.test(name))) throw new Error('Unexpected destination file')
         await unlink(path)
       }
     }

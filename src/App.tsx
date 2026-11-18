@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
-import { ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Heart, Home, Image as ImageIcon, Maximize2, MessageCircle, MoreHorizontal, Palette, Search, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, BookOpen, CalendarDays, Heart, Home, Image as ImageIcon, MessageCircle, MoreHorizontal, Palette, Search, Settings2, SlidersHorizontal, Users, X } from 'lucide-react'
 import { art, gallery, navigation } from './content'
 import type { Route } from './content'
 import { LiquidTransition } from './components/LiquidTransition'
@@ -24,7 +24,9 @@ import { GuestScreen } from './components/GuestScreen'
 import { useGuestbook } from './lib/useGuestbook'
 import { ProfileScreen } from './components/ProfileScreen'
 import { useSharedProfiles } from './lib/useSharedProfiles'
-import { PhotoUpload } from './components/PhotoUpload'
+import { GalleryScreen } from './components/GalleryScreen'
+import { TimelineScreen } from './components/TimelineScreen'
+import { useGallery } from './lib/useGallery'
 import { StoryScreen } from './components/StoryScreen'
 import { personalityTags } from './lib/profiles'
 import type { CharacterProfile, PersonId, Profiles } from './lib/profiles'
@@ -63,7 +65,7 @@ function CalendarWidget() {
   return <div className="widget date-widget" data-widget-id="date"><span><CalendarDays size={12} /> {date.toUpperCase()}</span><strong>{new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', day: '2-digit' }).format(today)}</strong><small>{weekday} <span>✧</span></small></div>
 }
 
-function HomeScreen({ profiles, writer, admin, music, guest, navigate, hero, feather, positions, setPositions, ddays, photoIndex, playEntrance, setPlayEntrance, draggable, loading }: { profiles: Profiles, writer: MessageWriter | null, admin: boolean, loading: boolean, draggable: boolean, music: MusicPlayback, navigate: Navigate, hero: 'portrait' | 'pair', feather: number, positions: WidgetPositions, setPositions: React.Dispatch<React.SetStateAction<WidgetPositions>>, ddays: DDay[], photoIndex: number, playEntrance: boolean, setPlayEntrance: React.Dispatch<React.SetStateAction<boolean>> } & GuestNotesProps) {
+function HomeScreen({ photos, profiles, writer, admin, music, guest, navigate, hero, feather, positions, setPositions, ddays, photoIndex, playEntrance, setPlayEntrance, draggable, loading }: { photos: { src: string, title: string }[], profiles: Profiles, writer: MessageWriter | null, admin: boolean, loading: boolean, draggable: boolean, music: MusicPlayback, navigate: Navigate, hero: 'portrait' | 'pair', feather: number, positions: WidgetPositions, setPositions: React.Dispatch<React.SetStateAction<WidgetPositions>>, ddays: DDay[], photoIndex: number, playEntrance: boolean, setPlayEntrance: React.Dispatch<React.SetStateAction<boolean>> } & GuestNotesProps) {
   const [entrance, setEntrance] = useState(playEntrance ? 'waiting' : 'done')
   const drag = useWidgetDrag(positions, setPositions, `${loading}:` + ddays.map(item => item.id).join(','), draggable && !loading)
   useEffect(() => {
@@ -110,7 +112,7 @@ function HomeScreen({ profiles, writer, admin, music, guest, navigate, hero, fea
     </div>
     <LikeWidget />
     <Messages key={`${admin}:${writer ? `${writer.uid}:${writer.character}` : "guest"}`} writer={writer} admin={admin} />
-    <PhotoWidget index={photoIndex} openGallery={e => navigate('gallery', e)} />
+    <PhotoWidget items={photos} index={photoIndex} openGallery={e => navigate('gallery', e)} />
     <MusicWidget playback={music} />
     <div className="notebook-widgets">
       <StoryWidget onOpen={event => navigate('story', event)} />
@@ -121,27 +123,13 @@ function HomeScreen({ profiles, writer, admin, music, guest, navigate, hero, fea
   </div>
 }
 
-function GalleryScreen({ query, setQuery }: { query: string, setQuery: (q: string) => void }) {
-  const [filter, setFilter] = useState('전체')
-  const [selected, setSelected] = useState<typeof gallery[number] | null>(null)
-  const dialog = useRef<HTMLDialogElement>(null)
-  const items = gallery.filter(item => (filter === '전체' || item.tags.includes(filter)) && `${item.title} ${item.category} ${item.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
-  function open(item: typeof gallery[number]) { setSelected(item); dialog.current?.showModal() }
-  return <>
-    <PhotoUpload />
-    <div className="gallery-tools"><div className="filter-tabs">{['전체', '페어', '켄지', '키요'].map(t => <button key={t} aria-pressed={filter === t} onClick={() => setFilter(t)}>{t}</button>)}</div><label className="inline-search"><Search size={16} /><input aria-label="갤러리 검색" placeholder="그림 찾기…" value={query} onChange={e => setQuery(e.target.value)} /></label><span className="result-count">{items.length}개의 그림</span></div>
-    {items.length ? <div className="gallery-grid">{items.map((item, i) => <button className={`gallery-item ${item.className}`} key={item.id} onClick={() => open(item)}><div className="gallery-image"><img src={item.src} alt={item.title} loading="lazy" /><span className="expand"><Maximize2 size={16} /></span><small>0{i + 1}</small></div><div className="gallery-caption"><div><strong>{item.title}</strong><span>{item.credit}</span></div><span className="category-tag">{item.category}</span></div></button>)}</div> : <div className="empty-state"><Search size={32} /><h2>찾는 그림이 없어요</h2><p>다른 이름이나 태그로 검색해 보세요.</p><button className="soft-button" onClick={() => { setQuery(''); setFilter('전체') }}>검색 초기화</button></div>}
-    <dialog ref={dialog} className="art-dialog" onClick={e => { if (e.target === e.currentTarget) dialog.current?.close() }}><div className="dialog-inner"><button className="dialog-close icon-button" aria-label="이미지 닫기" onClick={() => dialog.current?.close()}><X size={20} /></button>{selected && <><img src={selected.src} alt={selected.title} /><div><strong>{selected.title}</strong><span>{selected.credit}</span></div></>}</div></dialog>
-  </>
-}
-
-function InnerScreen({ route, navigate, query, setQuery, guest, admin, sharedProfiles, profilePerson }: { profilePerson: PersonId, sharedProfiles: ReturnType<typeof useSharedProfiles>, admin: boolean, route: Route, navigate: Navigate, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
-  const info = { profile: ['kirari / 프로필', ''], gallery: ['갤러리', '그림과 함께 남기는 기록.'], story: ['이야기', '긴 이야기와 짧은 에피소드를 모아 둘 공간.'], log: ['기록', '새로 더한 그림과 페이지를 한눈에.'], guest: ['방명록', '가볍게 남기는 한 줄.'], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''] }[route]
+function InnerScreen({ localGallery, route, navigate, query, setQuery, guest, admin, sharedProfiles, profilePerson }: { localGallery: ReturnType<typeof useGallery>, profilePerson: PersonId, sharedProfiles: ReturnType<typeof useSharedProfiles>, admin: boolean, route: Route, navigate: Navigate, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
+  const info = { profile: ['kirari / 프로필', ''], gallery: ['갤러리', ''], story: ['이야기', ''], log: ['타임라인', ''], guest: ['방명록', ''], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''] }[route]
   return <section className="inner-screen"><button className="back-link" onClick={e => navigate('home', e)}><ArrowLeft size={15} /> 홈으로</button><div className="page-heading"><div><>{route !== 'profile' && <span className="page-kicker">kirari <span>/</span> {navigation.find(n => n.id === route)?.label || '404'}</span>}<h1 tabIndex={-1}>{info[0]}{route !== 'profile' && <span>✦</span>}</h1>{info[1] && <p>{info[1]}</p>}</></div>{route !== 'profile' && <span className="page-icon">{route === 'not-found' ? <Search size={28} /> : (() => { const Icon = icons[route]; return <Icon size={28} strokeWidth={1.5} /> })()}</span>}</div>
-    {route === 'gallery' && <GalleryScreen query={query} setQuery={setQuery} />}
+    {route === 'gallery' && <GalleryScreen query={query} setQuery={setQuery} admin={admin} gallery={localGallery} />}
     {route === 'profile' && <ProfileScreen initialPerson={profilePerson} admin={admin} shared={sharedProfiles} />}
     {route === 'story' && <StoryScreen admin={admin} />}
-    {route === 'log' && <div className="log-list"><article><span className="log-dot" /><div className="log-date">미리보기</div><div><span className="category-tag">갤러리</span><h2>켄지와 키요의 그림 모음</h2><p>제공해 주신 일러스트 6장을 갤러리에서 볼 수 있어요.</p><button className="soft-button" onClick={e => navigate('gallery', e)}>갤러리 열기 <ArrowUpRight size={15} /></button></div><img src={art.pair} alt="" /></article><article><span className="log-dot pink" /><div className="log-date">준비 중</div><div><span className="category-tag">기록</span><h2>앞으로 쌓일 기록들</h2><p>실제 업데이트 기록은 다음 단계에서 연결합니다.</p></div></article></div>}
+    {route === 'log' && <TimelineScreen admin={admin} />}
     {route === 'guest' && <GuestScreen guest={guest} admin={admin} />}
     {route === 'not-found' && <div className="empty-state"><span className="error-number">404</span><button className="primary-button" onClick={e => navigate('home', e)}>홈으로 돌아가기 <ArrowUpRight size={16} /></button></div>}
   </section>
@@ -150,6 +138,7 @@ function InnerScreen({ route, navigate, query, setQuery, guest, admin, sharedPro
 export default function App() {
   const { host: musicHost, ...music } = useMusicPlayback()
   const guest = useGuestbook()
+  const localGallery = useGallery()
   const [playEntrance, setPlayEntrance] = useState(true)
   const sharedProfiles = useSharedProfiles()
   const [profilePerson, setProfilePerson] = useState<PersonId>('kenji')
@@ -184,7 +173,7 @@ export default function App() {
     setWriter(nextWriter)
     if (!value) { setDraft(null); setSettings(false) }
   }, [setDraft])
-  const [photoIndex, setPhotoIndex] = useState(() => Math.floor(Math.random() * gallery.length))
+  const [photoIndex, setPhotoIndex] = useState(() => gallery.length ? Math.floor(Math.random() * gallery.length) : 0)
   const [query, setQuery] = useState('')
   const transition = useRef<LiquidHandle>(null)
   const currentTheme = themes[theme]
@@ -240,7 +229,7 @@ export default function App() {
     <a className="skip-link" href="#main">본문으로 건너뛰기</a>
     <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); navigate('gallery') }}><Search size={15} /><input aria-label="공개 그림 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav aria-label="메인 메뉴">{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => setTheme(t)} />)}</div>{admin && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" onClick={() => setSettings(!settings)}><SlidersHorizontal size={18} /></button>}</header>
     {shared.status && <p className="site-settings-status" role="status">{shared.status}</p>}
-    <div className="workspace"><aside className="side-rail" aria-label="바로가기">{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><main id="main" tabIndex={-1}>{route === 'home' ? <HomeScreen profiles={sharedProfiles.profiles} writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen profilePerson={profilePerson} sharedProfiles={sharedProfiles} admin={admin} guest={guest} route={route} navigate={navigate} query={query} setQuery={setQuery} />}</main></div>
+    <div className="workspace"><aside className="side-rail" aria-label="바로가기">{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && <button aria-label="화면 설정 열기" onClick={() => { setSettings(!settings); settingsToggle.current?.focus() }}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><main id="main" tabIndex={-1}>{route === 'home' ? <HomeScreen photos={localGallery.items} profiles={sharedProfiles.profiles} writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen localGallery={localGallery} profilePerson={profilePerson} sharedProfiles={sharedProfiles} admin={admin} guest={guest} route={route} navigate={navigate} query={query} setQuery={setQuery} />}</main></div>
     <footer><span><i /> kirari <span className="footer-divider">/</span> 켄지 & 키요</span><div className="admin-login-bar"><AdminLogin onAdminChange={onAdminChange} /></div></footer>
     {admin && settings && <div ref={settingsRef} className="settings-panel widget" id="appearance-settings">
       <WidgetTitle icon={<Palette size={16} />} action={<button className="bare" aria-label="설정 닫기" onClick={() => { setSettings(false); settingsToggle.current?.focus() }}><X size={16} /></button>}>화면 설정</WidgetTitle>

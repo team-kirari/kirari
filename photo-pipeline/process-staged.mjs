@@ -18,11 +18,19 @@ export async function processStaged(root) {
     for (const name of await readdir(directory)) {
       const path = join(directory, name), fileInfo = await lstat(path)
       if (!fileInfo.isFile() || fileInfo.isSymbolicLink()) throw new Error('Invalid staged file')
-      let photo
+      let photo, credit
       try {
-        const match = /^[a-f0-9]{64}\.(png|jpg|webp|gif)$/.exec(name)
-        if (!match || !fileInfo.size || fileInfo.size > MAX_BYTES) throw new Error('Invalid staged image')
-        photo = await preparePhoto(await readFile(path), types[match[1]], groups[group])
+        const match = /^[a-f0-9]{64}\.(png|jpg|webp|gif|json)$/.exec(name)
+        if (!match || !fileInfo.size || fileInfo.size > (match[1] === 'json' ? 7_100_000 : MAX_BYTES)) throw new Error('Invalid staged image')
+        let input = await readFile(path), mime = types[match[1]]
+        if (match[1] === 'json') {
+          const record = JSON.parse(input.toString('utf8'))
+          if (!record || Object.keys(record).sort().join(',') !== 'credit,image,mime,version' || record.version !== 1
+            || !Object.values(types).includes(record.mime) || typeof record.credit !== 'string' || !record.credit.trim() || record.credit.length > 120
+            || [...record.credit].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) || typeof record.image !== 'string' || (record.image.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(record.image))) throw new Error('Invalid photo metadata')
+          input = Buffer.from(record.image, 'base64'); mime = record.mime; credit = record.credit.trim()
+        }
+        photo = await preparePhoto(input, mime, groups[group])
       } catch { rejected++; await unlink(path); continue }
       let target = base
       for (const segment of photo.path.split('/').slice(0, -1)) {
@@ -34,6 +42,11 @@ export async function processStaged(root) {
       // Exclusive write: duplicate content is already present and is never overwritten.
       try { await writeFile(join(base, photo.path), Buffer.from(photo.content, 'base64'), { flag: 'wx' }) }
       catch (error) { if (error.code !== 'EEXIST') throw error }
+      if (credit) {
+        const metadataPath = join(base, photo.path.replace(/\.webp$/, '.json'))
+        try { await writeFile(metadataPath, JSON.stringify({ credit }), { flag: 'wx' }) }
+        catch (error) { if (error.code !== 'EEXIST') throw error }
+      }
       await unlink(path)
       accepted++
     }

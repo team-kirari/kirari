@@ -11,17 +11,18 @@ export const navigation = [
   { id: 'profile', label: '프로필' },
   { id: 'gallery', label: '갤러리' },
   { id: 'story', label: '이야기' },
-  { id: 'log', label: '기록' },
+  { id: 'log', label: '타임라인' },
   { id: 'guest', label: '방명록' },
 ] as const
 export type Route = typeof navigation[number]['id'] | 'not-found'
 
-export const gallery = [
-  { id: 'portrait', tags: ['켄지', '키요', '페어'], title: '켄지 & 키요', category: '페어', src: portrait, credit: 'banana님 커미션', className: 'portrait' },
-  { id: 'pair', tags: ['켄지', '키요', '페어'], title: '함께 있는 모습', category: '페어', src: pair, credit: '페어 일러스트', className: 'pair' },
-  { id: 'kenji', tags: ['켄지', '프로필'], title: '켄지', category: '켄지', src: kenji, credit: '캐릭터 일러스트', className: '' },
-  { id: 'kiyo', tags: ['키요', '프로필'], title: '키요', category: '키요', src: kiyo, credit: '캐릭터 일러스트', className: '' },
-  { id: 'mini', tags: ['키요', '프로필'], title: '키요 · SD', category: '키요', src: kiyoSD, credit: '캐릭터 일러스트', className: '' },
-  { id: 'basic', tags: ['켄지', '프로필'], title: '켄지 · SD', category: '켄지', src: kenjiSD, credit: '캐릭터 일러스트', className: '' },
-  ...Object.entries(import.meta.glob<string>('@private-assets/gallery/*.{png,jpg,jpeg,webp,gif,PNG,JPG,JPEG,WEBP,GIF}', { eager: true, query: '?url', import: 'default' })).sort(([a], [b]) => a.localeCompare(b)).map(([path, src]) => ({ id: path, tags: ['페어'], title: '등록한 그림', category: '페어', src, credit: '', className: '' })),
-]
+const galleryCredits = import.meta.glob<{ credit?: unknown }>('@private-assets/gallery/*.json', { eager: true, import: 'default' })
+
+// Only newly uploaded gallery files belong here; character/hero art stays separate.
+export const gallery: { id: string, tags: string[], title: string, category: string, src: string, credit: string, className: string }[] = Object.entries(import.meta.glob<string>('@private-assets/gallery/*.webp', { eager: true, query: '?url', import: 'default' }))
+  .flatMap(([path, src]) => {
+    const id = path.split('/').at(-1)?.replace(/\.webp$/, '') ?? ''
+    const metadata = galleryCredits[path.replace(/\.webp$/, '.json')]
+    const credit = metadata && Object.keys(metadata).join(',') === 'credit' && typeof metadata.credit === 'string' && metadata.credit.length <= 120 ? metadata.credit : ''
+    return /^[a-f0-9]{64}$/.test(id) ? [{ id, src, title: '등록한 그림', tags: [], category: '', credit, className: '' }] : []
+  })

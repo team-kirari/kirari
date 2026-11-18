@@ -1,3 +1,4 @@
+import { handleUpload } from './index.mjs'
 import { Buffer } from 'node:buffer'
 import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
 
@@ -132,4 +133,6 @@ export async function handleStories(request, env, fetcher = fetch) {
     return reply(error instanceof ApiError ? error.status : 502, { error: error instanceof ApiError ? error.message : '원격 저장을 확인하지 못했어요. 입력 내용은 유지돼요. 같은 저장 버튼으로 다시 시도해 주세요.' })
   }
 }
-export default { fetch: (request, env) => handleStories(request, env) }
+export default { fetch: (request, env) => new URL(request.url).pathname === '/photos'
+  ? handleUpload(request, { ...env, PHOTO_GITHUB_WRITE_TOKEN: env.STORY_GITHUB_WRITE_TOKEN, UPLOAD_LIMITER: env.STORY_LIMITER, PHOTO_LOCAL_ORIGIN: env.STORY_LOCAL_ORIGIN })
+  : handleStories(request, env) }

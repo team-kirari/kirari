@@ -37,3 +37,23 @@ test('imports only allowed raster folders, retains names, mirrors deletions and 
   await assert.rejects(copyPhotos(from, from))
   await assert.rejects(copyPhotos(from, join(from, 'nested')))
 })
+
+test('photo builds accept only bounded copyright sidecars paired with approved WebP files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'kirari-photo-credit-'))
+  const from = join(root, 'from'), to = join(root, 'to')
+  for (const folder of photoFolders) await mkdir(join(from, folder), { recursive: true })
+  const id = 'a'.repeat(64), webp = Buffer.alloc(30)
+  webp.write('RIFF', 0); webp.write('WEBPVP8X', 8); webp[24] = 49; webp[27] = 59
+  await writeFile(join(from, `gallery/${id}.webp`), webp)
+  await writeFile(join(from, `gallery/${id}.json`), JSON.stringify({ credit: '테스트 작가' }))
+  const files = await listPhotos(from)
+  assert.equal(files.length, 2)
+  assert.equal(files.filter(file => file.metadata).length, 1)
+  assert.equal(await copyPhotos(from, to), 2)
+  assert.deepEqual(JSON.parse(await readFile(join(to, `gallery/${id}.json`), 'utf8')), { credit: '테스트 작가' })
+  await writeFile(join(from, `gallery/${id}.json`), JSON.stringify({ credit: '작가', private: 'forbidden' }))
+  await assert.rejects(listPhotos(from))
+  await writeFile(join(from, `gallery/${id}.json`), JSON.stringify({ credit: '작가' }))
+  await writeFile(join(from, `gallery/${'b'.repeat(64)}.json`), JSON.stringify({ credit: 'orphan' }))
+  await assert.rejects(listPhotos(from))
+})

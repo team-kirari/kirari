@@ -47,3 +47,17 @@ test('only fully decoded staged images reach public assets; rejects are removed 
   await writeFile(join(directory, name), input)
   assert.deepEqual(await processStaged(root), { accepted: 1, rejected: 0 })
 })
+
+test('atomic upload bundles preserve copyright separately from stripped image metadata', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'kirari-credit-'))
+  const directory = join(root, 'staging/gallery')
+  await mkdir(directory, { recursive: true })
+  const input = await png()
+  const payload = { version: 1, mime: 'image/png', credit: '테스트 작가', image: input.toString('base64') }
+  await writeFile(join(directory, `${'c'.repeat(64)}.json`), JSON.stringify(payload))
+  await writeFile(join(directory, `${'d'.repeat(64)}.json`), JSON.stringify({ ...payload, credit: '' }))
+  await writeFile(join(directory, `${'e'.repeat(64)}.json`), JSON.stringify({ ...payload, mime: 'image/svg+xml' }))
+  assert.deepEqual(await processStaged(root), { accepted: 1, rejected: 2 })
+  const photo = await preparePhoto(input, 'image/png', 'gallery')
+  assert.deepEqual(JSON.parse(await readFile(join(root, photo.path.replace(/\.webp$/, '.json')), 'utf8')), { credit: '테스트 작가' })
+})

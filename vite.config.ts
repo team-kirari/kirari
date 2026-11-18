@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
             const path = decodeURIComponent((request.url ?? '').split('?')[0]).replace(/^\/kirari\//, '/')
             const candidate = path.startsWith('/@fs/') ? resolve(path.slice(5)) : resolve(project, `.${path}`)
             const inside = relative(repo, candidate)
-            if (!isAbsolute(inside) && !inside.startsWith('..') && !/^assets[\\/](?:img|gallery|profiles[\\/](?:kenji|kiyo)[\\/](?:old|new))[\\/][^\\/]+\.(?:png|jpe?g|webp|gif)$/i.test(inside)) {
+            if (!isAbsolute(inside) && !inside.startsWith('..') && !/^assets[\\/](?:img|gallery|profiles[\\/](?:kenji|kiyo)[\\/](?:old|new))[\\/][^\\/]+\.(?:png|jpe?g|webp|gif)$/i.test(inside) && !/^assets[\\/]gallery[\\/][a-f0-9]{64}\.json$/.test(inside)) {
               response.writeHead(403); response.end(); return
             }
           } catch { response.writeHead(400); response.end(); return }

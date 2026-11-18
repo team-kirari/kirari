@@ -135,6 +135,78 @@ service cloud.firestore {
         && validPositions(request.resource.data.positions) && validRevision(request.resource.data) && nextRevision()
         && getAfter(/databases/$(database)/documents/site/appearance).data.revision == request.resource.data.revision;
     }
+    function validGalleryTag(tag) {
+      return tag is string && tag.size() > 0 && tag.size() <= 40
+        && tag.matches('[\\s\\S]*[^\\s][\\s\\S]*');
+    }
+    function validGalleryTags(tags) {
+      return tags is list && tags.size() <= 20 && tags.toSet().size() == tags.size()
+        && (tags.size() <= 0 || validGalleryTag(tags[0]))
+        && (tags.size() <= 1 || validGalleryTag(tags[1]))
+        && (tags.size() <= 2 || validGalleryTag(tags[2]))
+        && (tags.size() <= 3 || validGalleryTag(tags[3]))
+        && (tags.size() <= 4 || validGalleryTag(tags[4]))
+        && (tags.size() <= 5 || validGalleryTag(tags[5]))
+        && (tags.size() <= 6 || validGalleryTag(tags[6]))
+        && (tags.size() <= 7 || validGalleryTag(tags[7]))
+        && (tags.size() <= 8 || validGalleryTag(tags[8]))
+        && (tags.size() <= 9 || validGalleryTag(tags[9]))
+        && (tags.size() <= 10 || validGalleryTag(tags[10]))
+        && (tags.size() <= 11 || validGalleryTag(tags[11]))
+        && (tags.size() <= 12 || validGalleryTag(tags[12]))
+        && (tags.size() <= 13 || validGalleryTag(tags[13]))
+        && (tags.size() <= 14 || validGalleryTag(tags[14]))
+        && (tags.size() <= 15 || validGalleryTag(tags[15]))
+        && (tags.size() <= 16 || validGalleryTag(tags[16]))
+        && (tags.size() <= 17 || validGalleryTag(tags[17]))
+        && (tags.size() <= 18 || validGalleryTag(tags[18]))
+        && (tags.size() <= 19 || validGalleryTag(tags[19]))
+        ;
+    }
+    function validGallery(data) {
+      return data.keys().hasAll(['title', 'tags', 'album', 'credit', 'deleted', 'revision'])
+        && data.keys().hasOnly(['title', 'tags', 'album', 'credit', 'deleted', 'revision'])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+        && data.title.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && validGalleryTags(data.tags)
+        && data.album is string && data.album.size() <= 80
+        && data.credit is string && data.credit.size() <= 120
+        && data.deleted is bool && validRevision(data);
+    }
+    match /gallery/{imageId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 200;
+      allow create: if isAdmin() && imageId.matches('[a-f0-9]{64}')
+        && validGallery(request.resource.data) && request.resource.data.revision == 1;
+      allow update: if isAdmin() && imageId.matches('[a-f0-9]{64}')
+        && validGallery(request.resource.data) && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
+    // Public timeline entries. Deletion keeps a tombstone over built-in events.
+    function validTimeline(data) {
+      let leap = data.year % 4 == 0 && (data.year % 100 != 0 || data.year % 400 == 0);
+      let days = data.month == 2 ? (leap ? 29 : 28) : (data.month in [4, 6, 9, 11] ? 30 : 31);
+      return data.keys().hasAll(['year', 'month', 'day', 'dateLabel', 'title', 'body', 'revision', 'deleted'])
+        && data.keys().hasOnly(['year', 'month', 'day', 'dateLabel', 'title', 'body', 'revision', 'deleted'])
+        && data.year is int && data.year >= 1 && data.year <= 9999
+        && data.month is int && data.month >= 1 && data.month <= 12
+        && data.day is int && data.day >= 0 && data.day <= days
+        && data.dateLabel is string && data.dateLabel.size() <= 80
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+        && data.title.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && data.body is string && data.body.size() > 0 && data.body.size() <= 12000
+        && data.body.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && data.deleted is bool && validRevision(data);
+    }
+    match /timeline/{eventId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 200;
+      allow create: if isAdmin() && eventId.matches('[a-zA-Z0-9-]{1,64}')
+        && validTimeline(request.resource.data) && request.resource.data.revision == 1;
+      allow update: if isAdmin() && eventId.matches('[a-zA-Z0-9-]{1,64}')
+        && validTimeline(request.resource.data) && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
     match /counters/likes {
       allow get: if true;
       allow create: if request.resource.data.keys().hasOnly(['total']) && request.resource.data.total == 1;

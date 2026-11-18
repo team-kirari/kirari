@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { ArrowUpRight, Heart, MessageCircle } from 'lucide-react'
-import { art } from '../content'
 import type { GuestNotesProps } from './NotebookWidgets'
 
 export function GuestScreen({ guest, admin }: GuestNotesProps & { admin: boolean }) {
   const [draft, setDraft] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   return <div className="guest-layout">
-    <div className="guest-intro"><img src={art.pair} alt="켄지와 키요" /><span className="category-tag">공개 방명록</span><h2>한 줄 남기기</h2><p>로그인 없이 인사를 남길 수 있어요.<br />전체 방명록에서 5초에 한 번 작성할 수 있어요.</p></div>
+    <div className="guest-intro"><span className="category-tag">공개 방명록</span><h2>한 줄 남기기</h2><p>로그인 없이 인사를 남길 수 있어요.<br />전체 방명록에서 5초에 한 번 작성할 수 있어요.</p></div>
     <div><form className="guest-form" onSubmit={event => {
       event.preventDefault()
       void guest.addNote(draft).then(saved => { if (saved) setDraft('') })
