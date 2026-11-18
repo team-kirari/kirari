@@ -4,7 +4,7 @@
 
 GitHub Pages에서 Firebase 관리자로 로그인한 뒤 이야기의 **저장**을 누르면 Cloudflare Worker가 `team-kirari/kirari-private`의 `main` 브랜치 `web-stories/archive.json`을 GitHub Contents API로 커밋합니다. 별도 수동 commit·push나 이야기별 Pages 재배포는 필요하지 않습니다. 목록과 본문은 매번 Worker에서 원격 저장소를 읽습니다. GitHub 쓰기 성공 응답 후에만 저장 완료를 표시합니다.
 
-코드·mock 테스트·Worker 번들 검사를 완료하고 **`https://kirari-stories.papercloud.workers.dev`에 Worker를 배포했습니다.** 현재 사이트의 Firebase 웹 API key와 프로젝트 ID도 서버 변수로 연결했습니다. **GitHub 쓰기 Secret 등록도 완료했습니다.** 토큰의 대상 private 저장소 접근과 Worker의 Secret 이름 등록을 확인했으며 임시 토큰 파일은 삭제했습니다. 사용자가 앱의 공개 API URL 변수 등록을 완료했다고 알려 주었습니다. **앱 변경의 커밋·Pages 배포와 실제 글 저장·화면 확인은 아직 남았습니다.** 실제 쓰기 권한의 동작은 아직 시험하지 않았습니다.
+코드·mock 테스트·Worker 번들 검사를 완료하고 **`https://kirari-stories.papercloud.workers.dev`에 Worker를 배포했습니다.** 현재 사이트의 Firebase 웹 API key와 프로젝트 ID도 서버 변수로 연결했습니다. **GitHub 쓰기 Secret 등록도 완료했습니다.** 토큰의 대상 private 저장소 접근과 Worker의 Secret 이름 등록을 확인했으며 임시 토큰 파일은 삭제했습니다. 앱의 공개 API URL 변수를 연결하고 앱 코드 `2de7c72`를 main에 반영했습니다. [GitHub Pages 실행](https://github.com/team-kirari/kirari/actions/runs/44231507886)의 검사·빌드·배포 성공과 사이트 HTTP 200, 배포된 JavaScript의 원격 API 주소를 명령줄로 확인했습니다. **실제 관리자 로그인·글 저장과 화면 확인은 아직 사용자 확인이 필요합니다.** 실제 쓰기 권한의 동작은 아직 시험하지 않았습니다.
 
 기존 로컬 `stories/`와 운영 `web-stories/`를 분리했습니다. 로컬 개인 글을 자동 업로드하거나 공개하지 않습니다. `VITE_STORY_API_URL`이 없으면 개발 서버는 기존 로컬 작성 흐름을 사용하고 Pages는 서버 연결 안내를 표시합니다.
 
