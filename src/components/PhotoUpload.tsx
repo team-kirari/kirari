@@ -117,7 +117,6 @@ function UploadForm({ items, close, busy, setBusy }: { items: readonly GalleryIm
       const result = await response.json() as { status?: unknown, results?: { duplicate?: unknown }[] }
       if (result.status !== 'staged' || !Array.isArray(result.results) || result.results.length !== jobs.length) throw new Error('접수 결과를 확인하지 못했어요. 다시 시도해 주세요.')
       jobs.forEach(({ photo }, index) => update(photo.id, { status: result.results![index].duplicate === true ? 'duplicate' : 'staged', error: '' }))
-      window.dispatchEvent(new Event('kirari:photos-staged'))
       close()
     } catch (error) {
       const message = error instanceof Error ? error.message : '등록에 실패했어요.'
@@ -130,7 +129,7 @@ function UploadForm({ items, close, busy, setBusy }: { items: readonly GalleryIm
     <header className="photo-upload-header"><div className="photo-upload-heading-icon"><ImagePlus size={24} /></div><div><span className="photo-upload-eyebrow">GALLERY UPLOAD</span><h2 id="photo-upload-title">새로운 사진 올리기</h2><p>갤러리의 앨범에 사진을 모아 보세요.</p></div><button className="icon-button" type="button" disabled={busy} onClick={close} aria-label="업로드 창 닫기"><X size={20} /></button></header>
     <div className="photo-upload-selection">
       <label className="photo-upload-file"><Upload size={16} /><span>{validating ? '사진 확인 중…' : photos.length ? '사진 추가하기' : '사진 선택하기'}</span><input type="file" multiple disabled={busy || validating} accept=".apng,image/apng,image/png,image/jpeg,image/webp,image/gif" onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void selectPhotos(files) }} /></label>
-      <p className="photo-upload-help">PNG · APNG · JPG · WebP · GIF · 검증이 끝나면 갤러리에 공개돼요.</p>
+      <p className="photo-upload-help">PNG · APNG · JPG · WebP · GIF · 검증 후 사이트에 반영되면 공개돼요.</p>
     </div>
     {!photos.length && <div className="photo-upload-empty"><ImagePlus size={40} strokeWidth={1.3} /><p>사진을 여러 장 선택해 주세요.</p></div>}
     <div className="photo-upload-list">{photos.map((photo, index) => <fieldset key={photo.id} className="photo-upload-card" disabled={busy || accepted(photo)} aria-label={`사진 ${index + 1} 정보`}>

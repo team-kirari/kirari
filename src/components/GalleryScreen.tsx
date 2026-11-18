@@ -55,7 +55,6 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 <input aria-label="갤러리 검색" maxLength={120} placeholder="그림 찾기…" value={query} onChange={event => setQuery(event.target.value)} />
 </label>
 <span className="result-count">{items.length}개의 그림</span>
-<button className="soft-button" type="button" onClick={gallery.refresh}>새로고침</button>
 </div>
     {mode !== '전체보기' && <div className="gallery-groups" aria-label={`${mode} 선택`}>
 <button aria-pressed={!activeGroup} onClick={() => setGroup('')}>{mode} 전체</button>{groups.map(value => <button key={value} aria-pressed={activeGroup === value} onClick={() => setGroup(value)}>{mode === '태그' ? '#' : ''}{value}<small>{gallery.items.filter(item => mode === '태그' ? item.tags.includes(value) : (item.album || '미분류') === value).length}</small>
