@@ -72,11 +72,11 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
     // IP is not logged or persisted; Cloudflare's limiter stores the digest only.
     const key = Buffer.from(await crypto.subtle.digest('SHA-256', encode(request.headers.get('CF-Connecting-IP') || 'unknown'))).toString('hex')
     if (!(await env.STORY_LIMITER.limit({ key })).success) throw new ApiError(429, '잠시 후 다시 시도해 주세요.')
-    const match = (logs ? /^\/logs(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/ : /^\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/).exec(new URL(request.url).pathname)
+    const match = (logs ? /^\/logs(?:\/([a-f0-9-]+)(?:\/(unlock|edit|delete))?)?$/ : /^\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/).exec(new URL(request.url).pathname)
     if (!match || match[1] && !UUID.test(match[1])) throw denied()
     const [, id, action] = match
     if (!['GET', 'POST'].includes(request.method)) throw new ApiError(405, '지원하지 않는 요청이에요.')
-    const writing = request.method === 'POST' && !id
+    const writing = request.method === 'POST' && (!id || action === 'delete')
     const uid = writing || action === 'edit' || request.headers.has('Authorization') ? await identity(request, env, fetcher) : null
     if ((writing || action === 'edit') && !uid) throw new ApiError(401, '관리자 로그인이 필요해요.')
     const ghHeaders = { Authorization: `Bearer ${env.STORY_GITHUB_WRITE_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'kirari-stories', 'Content-Type': 'application/json' }
@@ -103,7 +103,14 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
       return reply(200, present(story, uid))
     }
     if (request.headers.get('Content-Type') !== 'application/json') throw new ApiError(415, 'JSON 입력만 지원해요.')
-    const input = await bounded(request, logs ? Infinity : 500_000)
+    const input = await bounded(request, action === 'delete' ? 1024 : logs ? Infinity : 500_000)
+    if (action === 'delete') {
+      const story = items.find(item => item.id === id)
+      if (!story || story.owner !== uid) throw denied()
+      if (!Number.isSafeInteger(input?.revision) || input.revision !== story.revision) throw new ApiError(409, '다른 곳에서 수정된 로그예요. 목록에서 다시 확인해 주세요.')
+      await store.save(snapshot, items.filter(item => item.id !== id))
+      return reply(200, { deleted: true })
+    }
     if (id) {
       const story = items.find(item => item.id === id)
       if (action !== 'unlock') throw denied()

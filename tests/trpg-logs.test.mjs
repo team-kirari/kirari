@@ -59,6 +59,46 @@ test('media URLs have exact HTTPS host boundaries and never expose private repo 
   assert.equal(logMediaUrl('asset:portrait', { portrait: { src: 'https://files.d20.io/portrait.png' } }), 'https://files.d20.io/portrait.png')
 })
 
+test('log deletion checks owner and revision, removes archive and index, and blocks future reads', async () => {
+  const f = fixture()
+  const input = draft()
+  assert.equal((await f.request('', input, 'A')).status, 200)
+  const path = `/${input.id}/delete`
+  assert.equal((await f.request(path, { revision: 1 })).status, 401)
+  assert.equal((await f.request(path, { revision: 1 }, 'member')).status, 403)
+  assert.equal((await f.request(path, { revision: 1 }, 'B')).status, 404)
+  assert.equal((await f.request(path, { revision: 0 }, 'A')).status, 409)
+  assert.equal((await f.request(path, { revision: 1 }, 'A', 'https://evil.test')).status, 403)
+  assert.equal(f.writes(), 1)
+  assert.equal((await f.request(path, { revision: 1 }, 'A')).status, 200)
+  assert.deepEqual(f.archive(), [])
+  assert.deepEqual(await (await f.request()).json(), [])
+  assert.equal((await f.request(`/${input.id}/unlock`, { password: input.password })).status, 404)
+  assert.equal((await f.request(`/${input.id}/edit`, undefined, 'A')).status, 404)
+})
+
+test('conflicting log deletion leaves the stored log accessible', async () => {
+  const f = fixture(), input = draft()
+  await f.request('', input, 'A')
+  f.conflict()
+  assert.equal((await f.request(`/${input.id}/delete`, { revision: 1 }, 'A')).status, 409)
+  assert.equal(f.archive().length, 1)
+})
+
+test('local log deletion rejects stale revisions and removes only the requested log', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'kirari-delete-log-'))
+  const store = createLocalStoryStore(root, { logs: true })
+  const input = draft()
+  delete input.id
+  const saved = await store.save(input)
+  const other = await store.save(input)
+  await assert.rejects(store.remove(saved.id, 0), /수정된 로그/)
+  await assert.rejects(store.remove('../escape', 1))
+  await store.remove(saved.id, saved.revision)
+  await assert.rejects(store.get(saved.id, input.password))
+  assert.deepEqual((await store.list()).map(item => item.id), [other.id])
+})
+
 function fixture() {
   let archive = null, index = null, version = 1, tree, commit, conflict = false, writes = 0, archiveReads = 0
   const sha = value => String(value).padStart(40, '0')

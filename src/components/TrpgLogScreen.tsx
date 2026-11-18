@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ChevronLeft, Clapperboard, Dices, LockKeyhole, Pause, Pencil, Play, Plus, Upload, X } from 'lucide-react'
-import { editTrpgLog, listTrpgLogs, remoteLogs, saveTrpgLog, unlockTrpgLog } from '../lib/trpg-log-api'
+import { ArrowLeft, ChevronLeft, Clapperboard, Dices, LockKeyhole, Pause, Pencil, Play, Plus, Trash2, Upload, X } from 'lucide-react'
+import { deleteTrpgLog, editTrpgLog, listTrpgLogs, remoteLogs, saveTrpgLog, unlockTrpgLog } from '../lib/trpg-log-api'
 import type { LogSummary } from '../lib/trpg-log-api'
 import { groupLogEntries, logIdFromHash, parseTrpgLog, validateLogFile } from '../lib/trpg-logs'
 import type { LogLine, ParsedLog } from '../lib/trpg-logs'
@@ -183,7 +183,6 @@ function LogReader({ parsed, title }: { parsed: ParsedLog, title: string }) {
         <MusicChannel compact channel={1} track={playback[index]?.scene?.bgm01} replay={parsed.replay} controlsHost={musicHost} />
         <MusicChannel compact channel={2} track={playback[index]?.scene?.bgm02} replay={parsed.replay} controlsHost={musicHost} />
       </div>
-      <LogPagination page={page} count={pageCount} onPage={changePage} />
       <div className="trpg-reader-actions">
         <label className="trpg-font"><span className="sr-only">글씨체</span><select value={font} onChange={event => { if (isStoryFont(event.target.value)) setFont(event.target.value) }}>{Object.entries(storyFonts).map(([value, choice]) => <option key={value} value={value}>{choice.label}</option>)}</select></label>
         <button className="primary-button" disabled={!entries.length} onClick={() => { setSelected(groups[page * PAGE_SIZE]?.[0].id ?? 0); setCinematic(true) }}><Clapperboard size={16} /> 시네마틱 보기</button>
@@ -191,7 +190,9 @@ function LogReader({ parsed, title }: { parsed: ParsedLog, title: string }) {
     </div>
     {!entries.length && <p className="trpg-empty">표시할 대사가 없어요.</p>}
     {fontStatus && <p className="trpg-note" role="status">{fontStatus}</p>}
+    <LogPagination page={page} count={pageCount} onPage={changePage} />
     <Transcript groups={groups.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)} replay={parsed.replay} selected={selected} />
+    <LogPagination page={page} count={pageCount} onPage={changePage} />
     {cinematic && entries.length > 0 && <Cinematic title={title} entries={playback} replay={parsed.replay} onMusicHost={setMusicHost} index={index} setIndex={setIndex} media onClose={close} />}
   </div>
 }
@@ -281,6 +282,20 @@ export function TrpgLogScreen({ admin }: { admin: boolean }) {
     return () => { cancelled = true }
   }, [admin, reload])
   const parsed = useMemo(() => opened ? parseTrpgLog(opened.body) : null, [opened])
+  const removeLog = async (item: LogSummary) => {
+    if (!window.confirm(`“${item.title}” 로그를 삭제할까요? 목록과 본문에서 제거되며 Git 이력에는 남습니다.`)) return
+    setBusy(true); setError(''); setStatus('')
+    const current = ++version.current
+    try {
+      const original = await editTrpgLog(item.id)
+      await deleteTrpgLog(item.id, original.revision)
+      if (current === version.current) {
+        setItems(items => items.filter(value => value.id !== item.id))
+        setStatus('로그를 삭제했어요.')
+      }
+    } catch (error) { if (current === version.current) setError(errorText(error)) }
+    finally { if (current === version.current) setBusy(false) }
+  }
   const back = () => { version.current++; setSelected(null); setOpened(null); setEditor(null); setPassword(''); setError(''); setBusy(false) }
   if (editor && admin) return <LogEditor key={editor.original?.id ?? 'new'} original={editor.original} onCancel={back} onSaved={story => { setEditor(null); setOpened(story); setSelected({ id: story.id, title: story.title, editable: true, logDate: null, preview: null }); setStatus(remoteLogs ? 'GitHub private 저장소에 저장했어요.' : '이 기기의 private checkout에 저장했어요.'); setReload(value => value + 1) }} />
   return <div className="trpg-screen" aria-busy={loading || busy}>
@@ -294,7 +309,7 @@ export function TrpgLogScreen({ admin }: { admin: boolean }) {
       catch (error) { if (current === version.current) setError(errorText(error)) }
       finally { if (current === version.current) setBusy(false) }
     }}><LockKeyhole size={32} /><h2>{selected.title === '잠긴 로그' ? '로그 열기' : selected.title}</h2><label>열람 비밀번호<input autoFocus required type="text" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={event => setPassword(event.target.value)} disabled={busy} /></label><button className="primary-button" disabled={busy}>{busy ? '확인 중…' : '로그 열기'}</button></form> : <>
-      {loading ? <div className="trpg-loading" role="status"><span className="trpg-loading-ring" aria-hidden="true" /><span>로그를 불러오는 중…</span></div> : <div className="trpg-log-list">{items.map(item => <article key={item.id}><button className="trpg-log-card" disabled={busy} onClick={() => { version.current++; setSelected(item); setPassword(''); setError(''); setStatus('') }}><span className="trpg-log-thumbnail">{item.preview ? <><LogImage key={item.preview} src={item.preview} alt="시작 장면 미리보기" /><small hidden>미리보기 없음</small></> : <small>미리보기 없음</small>}</span><span className="trpg-log-info"><strong>{item.title}</strong>{item.logDate ? <time dateTime={item.logDate}>{item.logDate.replaceAll('-', '.')}</time> : <small>날짜 정보 없음</small>}</span></button>{admin && item.editable && <button className="trpg-edit-button" disabled={busy} onClick={async () => { setBusy(true); setError(''); const current = ++version.current; try { const original = await editTrpgLog(item.id); if (current === version.current) setEditor({ original }) } catch (error) { if (current === version.current) setError(errorText(error)) } finally { if (current === version.current) setBusy(false) } }}><Pencil size={14} />수정</button>}</article>)}</div>}
+      {loading ? <div className="trpg-loading" role="status"><span className="trpg-loading-ring" aria-hidden="true" /><span>로그를 불러오는 중…</span></div> : <div className="trpg-log-list">{items.map(item => <article key={item.id}><button className="trpg-log-card" disabled={busy} onClick={() => { version.current++; setSelected(item); setPassword(''); setError(''); setStatus('') }}><span className="trpg-log-thumbnail">{item.preview ? <><LogImage key={item.preview} src={item.preview} alt="시작 장면 미리보기" /><small hidden>미리보기 없음</small></> : <small>미리보기 없음</small>}</span><span className="trpg-log-info"><strong>{item.title}</strong>{item.logDate ? <time dateTime={item.logDate}>{item.logDate.replaceAll('-', '.')}</time> : <small>날짜 정보 없음</small>}</span></button>{admin && item.editable && <div className="trpg-card-actions"><button className="trpg-edit-button" disabled={busy} onClick={async () => { setBusy(true); setError(''); const current = ++version.current; try { const original = await editTrpgLog(item.id); if (current === version.current) setEditor({ original }) } catch (error) { if (current === version.current) setError(errorText(error)) } finally { if (current === version.current) setBusy(false) } }}><Pencil size={12} />수정</button><button className="trpg-delete-button" disabled={busy} onClick={() => void removeLog(item)}><Trash2 size={12} />삭제</button></div>}</article>)}</div>}
       {!loading && !error && !items.length && <div className="trpg-empty"><Dices size={42} strokeWidth={1} /><h2>아직 등록된 글이 없어요</h2></div>}
     </>}
   </div>

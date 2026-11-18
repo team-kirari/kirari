@@ -27,6 +27,7 @@ import { GuestScreen } from './components/GuestScreen'
 import { useGuestbook } from './lib/useGuestbook'
 import { ProfileScreen } from './components/ProfileScreen'
 import { useSharedProfiles } from './lib/useSharedProfiles'
+import { SearchScreen } from './components/SearchScreen'
 import { GalleryScreen } from './components/GalleryScreen'
 import { TimelineScreen } from './components/TimelineScreen'
 import { useGallery } from './lib/useGallery'
@@ -38,7 +39,7 @@ import { personalityTags } from './lib/profiles'
 import type { CharacterProfile, PersonId, Profiles } from './lib/profiles'
 
 type Navigate = (route: Route, event?: MouseEvent<HTMLElement>, person?: PersonId) => void
-const icons = { home: Home, profile: Users, gallery: ImageIcon, story: BookOpen, log: CalendarDays, trpg: Dices, guest: MessageCircle }
+const icons = { home: Home, profile: Users, gallery: ImageIcon, story: BookOpen, log: CalendarDays, trpg: Dices, guest: MessageCircle, search: Search }
 const themes = {
   blue: { accent: '#8ba5cb', pale: '#dce7f5', ink: '#526988', pink: '#d8a4b9', background: '#f1f5fb' },
   pink: { accent: '#bf8fa9', pale: '#f1deea', ink: '#805e78', pink: '#a4b3d3', background: '#faf2f6' },
@@ -46,7 +47,7 @@ const themes = {
 }
 function readRoute(): Route {
   const id = window.location.hash.slice(1).split('?')[0] || 'home'
-  return navigation.some(item => item.id === id) ? id as Route : 'not-found'
+  return id === 'search' ? 'search' : navigation.some(item => item.id === id) ? id as Route : 'not-found'
 }
 
 function WidgetTitle({ icon, children, action }: { icon?: ReactNode, children: ReactNode, action?: ReactNode }) {
@@ -131,10 +132,11 @@ function HomeScreen({ photos, profiles, writer, admin, music, guest, navigate, h
   </div>
 }
 
-function InnerScreen({ localGallery, route, query, setQuery, guest, admin, sharedProfiles, profilePerson }: { localGallery: ReturnType<typeof useGallery>, profilePerson: PersonId, sharedProfiles: ReturnType<typeof useSharedProfiles>, admin: boolean, route: Route, query: string, setQuery: (q: string) => void } & GuestNotesProps) {
-  const info = { profile: ['프로필', ''], gallery: ['갤러리', ''], story: ['이야기', ''], log: ['타임라인', ''], trpg: ['로그', ''], guest: ['방명록', ''], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''] }[route]
+function InnerScreen({ localGallery, route, query, guest, admin, sharedProfiles, profilePerson }: { localGallery: ReturnType<typeof useGallery>, profilePerson: PersonId, sharedProfiles: ReturnType<typeof useSharedProfiles>, admin: boolean, route: Route, query: string } & GuestNotesProps) {
+  const info = { profile: ['프로필', ''], gallery: ['갤러리', ''], story: ['이야기', ''], log: ['타임라인', ''], trpg: ['로그', ''], guest: ['방명록', ''], 'not-found': ['페이지를 찾을 수 없어요', '주소를 확인하거나 홈으로 돌아가 주세요.'], home: ['', ''], search: ['통합 검색', ''] }[route]
   return <section className="inner-screen" data-page-loading={route === 'profile' ? !sharedProfiles.ready && !sharedProfiles.status : route === 'gallery' ? localGallery.loading : false}><div className="page-heading"><div><>{route === 'not-found' && <span className="page-kicker">kirari <span>/</span> 404</span>}<h1 tabIndex={-1}>{info[0]}<span>✦</span></h1>{info[1] && <p>{info[1]}</p>}</></div>{route !== 'profile' && <span className="page-icon">{route === 'not-found' ? <Search size={28} /> : (() => { const Icon = icons[route]; return <Icon size={28} strokeWidth={1.5} /> })()}</span>}</div>
-    {route === 'gallery' && <GalleryScreen query={query} setQuery={setQuery} admin={admin} gallery={localGallery} />}
+    {route === 'gallery' && <GalleryScreen admin={admin} gallery={localGallery} />}
+    {route === 'search' && <SearchScreen query={query} gallery={localGallery} />}
     {route === 'profile' && !sharedProfiles.ready && !sharedProfiles.status && <p role="status">프로필을 불러오는 중…</p>}
     {route === 'profile' && (sharedProfiles.ready || sharedProfiles.status) && <ProfileScreen initialPerson={profilePerson} admin={admin} shared={sharedProfiles} />}
     {route === 'story' && <StoryScreen admin={admin} />}
@@ -195,7 +197,7 @@ export default function App() {
     if (!value) { setDraft(null); setSettings(false) }
   }, [setDraft])
   const [photoIndex, setPhotoIndex] = useState(() => gallery.length ? Math.floor(Math.random() * gallery.length) : 0)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(() => readRoute() === 'search' ? new URLSearchParams(window.location.hash.split('?')[1]).get('q')?.slice(0, 120) ?? '' : '')
   const transition = useRef<LiquidHandle>(null)
   const [pendingRoute, setPendingRoute] = useState<Route | null>(null)
   const pageRoots = useRef(new Map<Route, HTMLElement>())
@@ -251,12 +253,16 @@ export default function App() {
     } else commit()
   }, [currentTheme.pale, setDraft])
   useEffect(() => {
-    const sync = () => changeRoute(readRoute())
+    const sync = () => {
+      const next = readRoute()
+      if (next === 'search') setQuery(new URLSearchParams(window.location.hash.split('?')[1]).get('q')?.slice(0, 120) ?? '')
+      changeRoute(next)
+    }
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [changeRoute])
   useEffect(() => {
-    document.title = route === 'home' ? 'kirari' : `${navigation.find(n => n.id === route)?.label || '404'} · kirari`
+    document.title = route === 'home' ? 'kirari' : `${(route === 'search' ? '통합 검색' : navigation.find(n => n.id === route)?.label) || '404'} · kirari`
   }, [route])
   useEffect(() => {
     if (!settings) return
@@ -280,10 +286,10 @@ export default function App() {
   const variables = { '--accent': currentTheme.accent, '--pale': currentTheme.pale, '--ink': currentTheme.ink, '--pink': currentTheme.pink, '--page-bg': currentTheme.background } as CSSProperties
   return <div className="app-shell" data-theme={theme} style={variables}>
     <a className="skip-link" href="#main">본문으로 건너뛰기</a>
-    <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); navigate('gallery') }}><Search size={15} /><input aria-label="공개 그림 검색" value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav ref={topNavigation} className="selection-track" aria-label="메인 메뉴"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => selectTheme(t)} />)}</div><span className="theme-spacer" aria-hidden="true" />{admin && route === 'home' && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" disabled={!shared.ready || shared.saving} onClick={toggleSettings}><SlidersHorizontal size={18} /></button>}</header>
+    <header className="topbar"><button className="brand" onClick={e => navigate('home', e)} aria-label="kirari 홈"><span className="brand-symbol">✳</span><span>kirari<span className="brand-dot">.</span></span></button><form className="header-search" onSubmit={e => { e.preventDefault(); window.location.hash = `search?q=${encodeURIComponent(query.trim())}`; changeRoute('search') }}><Search size={15} /><input aria-label="갤러리·이야기·로그 통합 검색" maxLength={120} value={query} onChange={e => setQuery(e.target.value)} placeholder="기록 찾아보기" /><kbd>↵</kbd></form><nav ref={topNavigation} className="selection-track" aria-label="메인 메뉴"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => <button key={n.id} className={route === n.id ? 'active' : ''} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}>{n.label}</button>)}</nav><div className="header-themes" role="group" aria-label="테마 색상">{(Object.keys(themes) as Theme[]).map(t => <button type="button" key={t} aria-label={`${({ blue: '블루', pink: '핑크', monochrome: '흑백' })[t]} 테마`} aria-pressed={theme === t} style={{ '--swatch': themes[t].accent } as CSSProperties} onClick={() => selectTheme(t)} />)}</div><span className="theme-spacer" aria-hidden="true" />{admin && route === 'home' && <button className={`header-settings icon-button ${settings ? 'selected' : ''}`} ref={settingsToggle} aria-label="화면 설정" aria-expanded={settings} aria-controls="appearance-settings" disabled={!shared.ready || shared.saving} onClick={toggleSettings}><SlidersHorizontal size={18} /></button>}</header>
     {themeStatus && <p className="theme-status" role="status">{themeStatus}</p>}
     {shared.status && <p className="site-settings-status" role="status">{shared.status}</p>}
-    <div className="workspace"><aside ref={sideNavigation} className="side-rail selection-track" aria-label="바로가기"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && route === 'home' && <button aria-label="화면 설정 열기" aria-expanded={settings} disabled={!shared.ready || shared.saving} onClick={toggleSettings}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><div className="page-stack">{[route, ...(pendingRoute && pendingRoute !== route ? [pendingRoute] : [])].map(screen => <main key={screen} ref={element => { if (element) pageRoots.current.set(screen, element); else pageRoots.current.delete(screen) }} className={`page-transition ${screen !== route ? 'page-preparing' : ''}`} id={screen === route ? 'main' : undefined} aria-hidden={screen !== route || undefined} inert={screen !== route} tabIndex={-1}>{screen === 'home' ? <HomeScreen photos={localGallery.items} profiles={sharedProfiles.profiles} writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen localGallery={localGallery} profilePerson={profilePerson} sharedProfiles={sharedProfiles} admin={admin} guest={guest} route={screen} query={query} setQuery={setQuery} />}</main>)}</div></div>
+    <div className="workspace"><aside ref={sideNavigation} className="side-rail selection-track" aria-label="바로가기"><span className="selection-indicator" aria-hidden="true" />{navigation.map(n => { const Icon = icons[n.id]; return <button key={n.id} aria-label={n.label} title={n.label} aria-current={route === n.id ? 'page' : undefined} onClick={e => navigate(n.id, e)}><Icon size={20} strokeWidth={1.6} /></button> })}<span className="rail-divider" />{admin && route === 'home' && <button aria-label="화면 설정 열기" aria-expanded={settings} disabled={!shared.ready || shared.saving} onClick={toggleSettings}><Settings2 size={20} strokeWidth={1.6} /></button>}<span className="rail-flower" aria-hidden="true">✳</span></aside><div className="page-stack">{[route, ...(pendingRoute && pendingRoute !== route ? [pendingRoute] : [])].map(screen => <main key={screen} ref={element => { if (element) pageRoots.current.set(screen, element); else pageRoots.current.delete(screen) }} className={`page-transition ${screen !== route ? 'page-preparing' : ''}`} id={screen === route ? 'main' : undefined} aria-hidden={screen !== route || undefined} inert={screen !== route} tabIndex={-1}>{screen === 'home' ? <HomeScreen photos={localGallery.items} profiles={sharedProfiles.profiles} writer={writer} admin={admin} loading={shared.loading} draggable={!shared.saving} music={music} guest={guest} playEntrance={playEntrance} setPlayEntrance={setPlayEntrance} navigate={navigate} hero={hero} feather={feather} positions={widgetPositions} setPositions={setWidgetPositions} ddays={ddays} photoIndex={photoIndex} /> : <InnerScreen localGallery={localGallery} profilePerson={profilePerson} sharedProfiles={sharedProfiles} admin={admin} guest={guest} route={screen} query={query} />}</main>)}</div></div>
     <footer><span><i /> kirari <span className="footer-divider">/</span> 켄지 & 키요</span><div className="admin-login-bar"><AdminLogin onAdminChange={onAdminChange} /></div></footer>
     {admin && route === 'home' && settings && editing && <div className="settings-panel widget" id="appearance-settings">
       <WidgetTitle icon={<Palette size={16} />} action={<button className="bare" aria-label="설정 닫고 취소" disabled={shared.saving} onClick={cancelSettings}><X size={16} /></button>}>공용 화면 편집</WidgetTitle>

@@ -11,11 +11,14 @@ import { PhotoUpload } from './PhotoUpload'
 import './ArchiveScreens.css'
 
 type Mode = '전체보기' | '태그' | '앨범'
-export function GalleryScreen({ query, setQuery, admin, gallery }: { query: string, setQuery: (value: string) => void, admin: boolean, gallery: ReturnType<typeof useGallery> }) {
+export function GalleryScreen({ admin, gallery }: { admin: boolean, gallery: ReturnType<typeof useGallery> }) {
+  const [query, setQuery] = useState('')
   const [mode, setMode] = useState<Mode>('전체보기')
   const [group, setGroup] = useState('')
   const filterNavigation = useSelectionIndicator<HTMLDivElement>(mode)
-  const [selected, setSelected] = useState<GalleryImage | null>(null)
+  const [selectedItem, setSelected] = useState<GalleryImage | null>(null)
+  const [initialItemId, setInitialItemId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1]).get('item'))
+  const selected = selectedItem ?? gallery.items.find(item => item.id === initialItemId) ?? null
   const [editing, setEditing] = useState(false)
   const [editItem, setEditItem] = useState<GalleryImage | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -26,9 +29,12 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
   const dialog = useRef<HTMLDialogElement>(null)
   const editor = useRef<HTMLDialogElement>(null)
   useEffect(() => { if (!admin) editor.current?.close() }, [admin])
+  useEffect(() => {
+    if (initialItemId && gallery.items.some(item => item.id === initialItemId)) dialog.current?.showModal()
+  }, [initialItemId, gallery.items])
   const groups = mode === '전체보기' ? [] : galleryGroups(gallery.items, mode)
   const activeGroup = groups.includes(group) ? group : ''
-  const items = sortGalleryByCredit(gallery.items.filter(item => (!activeGroup || (mode === '태그' ? item.tags.includes(activeGroup) : (item.album || '미분류') === activeGroup)) && `${item.title} ${item.album} ${item.tags.join(' ')} ${item.credit}`.toLowerCase().includes(query.toLowerCase())))
+  const items = sortGalleryByCredit(gallery.items.filter(item => (!activeGroup || (mode === '태그' ? item.tags.includes(activeGroup) : (item.album || '미분류') === activeGroup)) && `${item.album} ${item.tags.join(' ')} ${item.credit}`.toLowerCase().includes(query.toLowerCase())))
   const visibleIds = new Set(items.map(item => item.id))
   const grid = useGalleryReveal(JSON.stringify(gallery.items.map(item => [item.id, item.src])), `${mode}:${activeGroup}:${query}`)
   function open(item: GalleryImage) { setSelected(item); setDeleting(false); dialog.current?.showModal() }
@@ -75,7 +81,7 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 <ImagePlus size={32} />
 <h2>{gallery.items.length ? '찾는 그림이 없어요' : '새로운 그림을 기다리고 있어요'}</h2>
 <p>{gallery.items.length ? '다른 태그나 앨범을 선택해 보세요.' : '관리자로 로그인한 뒤 첫 그림을 등록해 주세요.'}</p>{gallery.items.length > 0 && <button className="soft-button" onClick={() => { setQuery(''); setGroup(''); setMode('전체보기') }}>전체 그림 보기</button>}</div>}
-    <dialog ref={dialog} className="art-dialog" aria-label="그림 크게 보기" onClose={() => setSelected(null)} onClick={event => { if (event.target === event.currentTarget) dialog.current?.close() }}>
+    <dialog ref={dialog} className="art-dialog" aria-label="그림 크게 보기" onClose={() => { setSelected(null); setInitialItemId(null) }} onClick={event => { if (event.target === event.currentTarget) dialog.current?.close() }}>
 <div className="dialog-inner">
 <button className="dialog-close icon-button" aria-label="이미지 닫기" onClick={() => dialog.current?.close()}>
 <X size={20} />

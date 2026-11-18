@@ -16,7 +16,7 @@ export const navigation = [
   { id: 'trpg', label: '로그' },
   { id: 'guest', label: '방명록' },
 ] as const
-export type Route = typeof navigation[number]['id'] | 'not-found'
+export type Route = typeof navigation[number]['id'] | 'not-found' | 'search'
 
 const galleryCredits = import.meta.glob<unknown>('@private-assets/gallery/*.json', { eager: true, import: 'default' })
 

@@ -52,6 +52,16 @@ export function createLocalStoryStore(repo: string, { logs = false } = {}) {
     return { ...parseStoryDraft(data)!, id: data.id, revision: data.revision, createdAt: data.createdAt, updatedAt: data.updatedAt, protected: data.passwordHash !== null }
   }
   return {
+    remove(id: string, revision: unknown): Promise<void> {
+      const job = queue.catch(() => {}).then(async () => {
+        if (!logs) throw unavailable()
+        const previous = await read(id)
+        if (!Number.isSafeInteger(revision) || previous.revision !== revision) throw new StoryError(409, '다른 곳에서 수정된 로그예요. 목록에서 다시 확인해 주세요.')
+        await unlink(join(directory, `${id}.json`))
+      })
+      queue = job
+      return job
+    },
     async list() {
       if (!await checkDirectory()) return []
       const names = (await readdir(directory)).filter(name => idPattern.test(name.replace(/\.json$/, '')) && name.endsWith('.json'))
@@ -131,9 +141,10 @@ export function createLocalStoryMiddleware(repo: string, { logs = false } = {}) 
         || request.headers['x-kirari-local'] !== '1'
         || request.headers.origin && request.headers.origin !== `http://${host}`
         || request.headers['sec-fetch-site'] && request.headers['sec-fetch-site'] !== 'same-origin') throw new StoryError(403, '이 기능은 같은 기기의 로컬 화면에서만 사용할 수 있어요.')
-      const match = (logs ? /^\/kirari\/__local\/trpg-logs(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/ : /^\/kirari\/__local\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/).exec(path)
+      const match = (logs ? /^\/kirari\/__local\/trpg-logs(?:\/([a-f0-9-]+)(?:\/(unlock|edit|delete))?)?$/ : /^\/kirari\/__local\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/).exec(path)
       if (!match) throw unavailable()
       const [, id, action] = match
+      if (action === 'delete' && (request.method !== 'POST' || request.headers['x-kirari-local-author'] !== '1')) throw new StoryError(403, '로컬 작성자 권한이 필요해요.')
       if (request.method === 'GET' && !action) { reply(200, id ? await store.get(id) : logs ? (await store.list()).map(item => ({ id: item.id, title: item.title, logDate: item.logDate ?? null, preview: item.preview ?? null, editable: request.headers['x-kirari-local-author'] === '1' })) : await store.list()); return }
       // Local author access is intentionally separate from the reader password.
       if (request.method === 'GET' && id && action === 'edit') { reply(200, await store.get(id, undefined, true)); return }
@@ -147,11 +158,12 @@ export function createLocalStoryMiddleware(repo: string, { logs = false } = {}) 
       let size = 0
       for await (const chunk of request) {
         size += Buffer.byteLength(chunk)
-        if (!logs && size > MAX_BYTES) throw new StoryError(413, '글의 용량이 너무 커요.')
+        if (action === 'delete' ? size > 1024 : !logs && size > MAX_BYTES) throw new StoryError(413, '글의 용량이 너무 커요.')
         chunks.push(Buffer.from(chunk))
       }
       let body: unknown
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { throw new StoryError(400, '잘못된 요청이에요.') }
+      if (id && action === 'delete') { await store.remove(id, (body as { revision?: unknown } | null)?.revision); reply(200, { deleted: true }); return }
       if (!id && !action) { reply(200, await store.save(body)); return }
       if (id && action === 'unlock') { reply(200, await store.get(id, (body as { password?: string } | null)?.password)); return }
       throw unavailable()

@@ -82,3 +82,9 @@ Google 로그인에서 `auth/unauthorized-domain` 오류가 나면 Firebase Cons
 공식 근거: [GitHub Contents API](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents), [Firebase 계정 조회](https://firebase.google.com/docs/reference/rest/auth#section-get-account-info), [Firestore REST의 Firebase ID 토큰·규칙](https://firebase.google.com/docs/firestore/use-rest-api), [Workers Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/). 확인일: 2026-11-18.
 
 빈 비밀번호는 설정할 수 없으며, 요청 전체 용량 제한은 유지합니다.
+
+## 로그 삭제
+
+로그 목록에서 작성자에게 작은 수정·삭제 버튼을 표시합니다. 삭제 확인 후 Worker가 관리자·작성자 권한과 revision을 검증하고 `web-trpg-logs/archive.json`과 `index.json`에서 해당 로그를 같은 커밋으로 제거합니다. 이후 목록·비밀번호 열람·수정 API에서 접근할 수 없습니다. Git 이력과 이미 다운로드한 사본은 남으며, 외부 이미지 원본을 삭제하지 않습니다. 로컬 모드에서는 해당 checkout의 `trpg-logs/<UUID>.json`만 삭제합니다. 이 기능의 운영 적용에는 프런트엔드와 Worker 배포가 모두 필요합니다.
+
+2026-11-18 삭제 API 운영 반영: Worker 버전 `5d6b83ba-429a-4455-978a-e0755db86b3d`를 배포했습니다. 배포 전 존재하지 않는 합성 ID에 대한 무인증 삭제 요청은 404였으며, 운영 서버에 삭제 경로가 없었습니다. 실제 개인 로그 삭제 및 브라우저 조작은 수행하지 않았습니다.

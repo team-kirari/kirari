@@ -63,6 +63,11 @@ export async function editTrpgLog(id: string): Promise<Story> {
   if (!uuid(id)) throw new Error('로그 주소를 확인해 주세요.')
   return readLog(await request(`/${id}/edit`, undefined, true))
 }
+export async function deleteTrpgLog(id: string, revision: number): Promise<void> {
+  if (!uuid(id) || !Number.isSafeInteger(revision) || revision < 1) throw new Error('로그 정보를 확인해 주세요.')
+  const result = await request(`/${id}/delete`, { revision }, true)
+  if (!result || typeof result !== 'object' || !('deleted' in result) || result.deleted !== true) throw new Error('로그 삭제 결과를 확인하지 못했어요.')
+}
 export async function saveTrpgLog(input: { title: string, body: string, password: string | null, id?: string, revision?: number, mutation: string }): Promise<Story> {
   const { id, revision, ...rest } = input
   return readLog(await request('', { ...rest, ...(remoteLogs ? { id: id ?? crypto.randomUUID(), revision: revision ?? 0 } : id ? { id, revision } : {}), author: '', font: 'default' }, true))

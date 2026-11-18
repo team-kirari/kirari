@@ -1,67 +1,18 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { ArrowLeft, LockKeyhole, Pencil, Plus } from 'lucide-react'
-import { compareStories, isStoryDate, isStoryFont, parseStoryDraft, storyDate, STORY_DEFAULT_FONT_SIZE, storyBlocks, storyFonts, storySizePresets, storyPresetSize } from '../lib/stories'
+import { isStoryFont, parseStoryDraft, storyDate, STORY_DEFAULT_FONT_SIZE, storyBlocks, storyFonts, storySizePresets, storyPresetSize } from '../lib/stories'
 import type { Story, StoryDraft, StoryFont, StorySummary } from '../lib/stories'
 import { useStoryFont } from '../lib/useStoryFont'
 import { useConfirmation } from '../lib/useConfirmation'
 import './StoryFonts.css'
 import './StoryScreen.css'
-import { getFirebaseConfig } from '../lib/auth'
+import { remote, request, readStory, readList } from '../lib/story-api'
 import { emptyStoryBackups, readStoryBackups, storyDraftKey, writeStoryBackups } from '../lib/story-drafts'
 import type { StoryDraftBackup, StoryDraftBackups } from '../lib/story-drafts'
 import { storyStatistics } from '../lib/story-statistics'
 
-const remoteUrl = import.meta.env.VITE_STORY_API_URL as string | undefined
-const remote = Boolean(remoteUrl)
-function storyEndpoint() {
-  if (!remoteUrl) {
-    if (!import.meta.env.DEV) throw new Error('이야기 서버가 아직 연결되지 않았어요.')
-    return `${import.meta.env.BASE_URL}__local/stories`
-  }
-  const url = new URL(remoteUrl)
-  if (url.protocol !== 'https:' || !/^kirari-stories\.[a-z0-9-]+\.workers\.dev$/.test(url.hostname) || url.pathname !== '/stories' || url.search || url.hash || url.username || url.password || url.port) throw new Error('이야기 서버 주소를 확인해 주세요.')
-  return url.href
-}
-async function request(path = '', body?: unknown, authenticated = false): Promise<unknown> {
-  const endpoint = storyEndpoint()
-  const headers: Record<string, string> = remote ? {} : { 'X-Kirari-Local': '1' }
-  if (remote && authenticated) {
-    const config = getFirebaseConfig(import.meta.env)
-    if (!config) throw new Error('Firebase 연결을 확인해 주세요.')
-    const { getFirebaseAuth } = await import('../lib/firebase')
-    const auth = getFirebaseAuth(config)
-    await auth.authStateReady()
-    if (!auth.currentUser) throw new Error('관리자 로그인이 필요해요.')
-    headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`
-  }
-  const response = await fetch(`${endpoint}${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: { ...headers, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-    body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', redirect: 'error',
-    signal: AbortSignal.timeout(remote ? 60_000 : 15_000),
-  })
-  const data: unknown = await response.json()
-  if (!response.ok) throw new Error(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : '글을 불러오지 못했어요.')
-  return data
-}
-function readStory(data: unknown): Story {
-  if (!data || typeof data !== 'object') throw new Error('글의 형식을 확인해 주세요.')
-  const item = data as Record<string, unknown>
-  const draft = parseStoryDraft(item)
-  if (!draft || typeof item.id !== 'string' || !/^[a-f0-9-]{36}$/.test(item.id)
-    || typeof item.revision !== 'number' || !Number.isSafeInteger(item.revision) || item.revision < 1
-    || typeof item.createdAt !== 'string' || !Number.isFinite(Date.parse(item.createdAt))
-    || typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt))
-    || typeof item.protected !== 'boolean') throw new Error('글의 형식을 확인해 주세요.')
-  return { ...draft, id: item.id, revision: item.revision, createdAt: item.createdAt, updatedAt: item.updatedAt, protected: item.protected, editable: item.editable === true }
-}
 const formatDate = (date: string) => new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeZone: 'Asia/Seoul' }).format(new Date(date))
-async function readList(admin = false): Promise<StorySummary[]> {
-  const data = await request('', undefined, admin)
-  if (!Array.isArray(data) || data.length > 1000 || data.some(item => !item || typeof item !== 'object' || typeof item.id !== 'string' || !/^[a-f0-9-]{36}$/.test(item.id) || typeof item.title !== 'string' || item.title.length > 120 || typeof item.author !== 'string' || item.author.length > 60 || typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt)) || (item.writtenOn !== undefined && !isStoryDate(item.writtenOn)) || (item.createdAt !== undefined && (typeof item.createdAt !== 'string' || !Number.isFinite(Date.parse(item.createdAt)))) || typeof item.protected !== 'boolean')) throw new Error('이야기 목록의 형식을 확인해 주세요.')
-  return data.map(item => ({ ...item, createdAt: item.createdAt ?? item.updatedAt })).sort(compareStories)
-}
 
 function StoryLoading() {
   return <div className="story-loading" role="status"><span className="story-loading-ring" aria-hidden="true" /><span>이야기를 불러오는 중…</span></div>
@@ -304,7 +255,16 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
   useEffect(() => {
     if (!available) return
     let active = true
-    void readList(admin).then(data => { if (active) { setItems(data); setError('') } })
+    void readList(admin).then(async data => {
+      if (!active) return
+      setItems(data); setError('')
+      const id = new URLSearchParams(window.location.hash.split('?')[1]).get('story')
+      const item = data.find(item => item.id === id)
+      if (!item) return
+      if (item.protected) { setLocked(item); return }
+      const story = readStory(await request(`/${item.id}`, undefined, remote && admin))
+      if (active) setView({ kind: 'read', story })
+    })
       .catch(error => { if (active) setError(error instanceof Error ? error.message : '목록을 불러오지 못했어요.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
