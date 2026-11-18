@@ -10,11 +10,11 @@ export function TimelineScreen({ admin }: { admin: boolean }) {
   const [draft, setDraft] = useState<TimelineEvent | null>(null)
   const [remove, setRemove] = useState(false)
   const [error, setError] = useState('')
-  const [activeId, setActiveId] = useState('autumn-refrain')
+  const [activeId, setActiveId] = useState('')
   const [detailOpen, setDetailOpen] = useState(false)
   const panel = useRef<HTMLDivElement>(null)
   const overview = useRef<HTMLDivElement>(null)
-  const selected = useRef('autumn-refrain')
+  const selected = useRef('')
   const dialog = useRef<HTMLDialogElement>(null)
   const surface = useRef<HTMLDivElement>(null)
   const closing = useRef(false)
@@ -110,10 +110,11 @@ export function TimelineScreen({ admin }: { admin: boolean }) {
     if (await timeline.save({ ...draft, deleted })) dialog.current?.close()
   }
   return <>
+    {timeline.status && <p role="status">{timeline.status}</p>}
     {admin && timeline.ready && <div className="archive-toolbar"><button className="primary-button" disabled={!timeline.ready || timeline.busy} onClick={() => edit({ id: crypto.randomUUID(), year: 2050, month: 12, day: 0, dateLabel: '', title: '', body: '', revision: 0, deleted: false })}><Plus size={15} /> 사건 추가</button></div>}
     <section className="timeline-frame is-overview" aria-label="TIMELINE">
 
-      {!timeline.items.length ? <p className="empty-state">아직 기록한 사건이 없어요.</p> : <div className="timeline-overview" inert={detailOpen} ref={overview} tabIndex={0} role="region" aria-label="전체 사건 · 좌우로 스크롤"><div className="timeline-overview-canvas" style={{ minWidth: timeline.items.length * 185 }}>
+      {!timeline.items.length ? <p className="empty-state" role="status">{timeline.ready ? '아직 기록한 사건이 없어요.' : timeline.status ? '' : '타임라인을 불러오는 중…'}</p> : <div className="timeline-overview" inert={detailOpen} ref={overview} tabIndex={0} role="region" aria-label="전체 사건 · 좌우로 스크롤"><div className="timeline-overview-canvas" style={{ minWidth: timeline.items.length * 185 }}>
         <div className="timeline-years">{[...new Set(timeline.items.map(item => item.year))].map(year => <div key={year} style={{ flex: timeline.items.filter(item => item.year === year).length }}><span>{year}</span></div>)}</div>
         <ol className="timeline-overview-track">
           {timeline.items.map((item, index) => <li key={item.id} className={index % 2 ? 'below' : 'above'}><button data-overview-id={item.id} onClick={() => open(item.id)} aria-label={`${item.year}년 ${item.dateLabel || `${item.month}월`} · ${item.title} · 자세히 보기`}><span className="overview-point" aria-hidden="true" /><span className="overview-branch" aria-hidden="true" /><span className="overview-event"><span className="overview-date">{item.dateLabel || `${item.month}월${item.day ? ` ${item.day}일` : ''}`}</span><strong>{item.title}</strong><span className="overview-excerpt">{timelineBodyBlocks(item.body).filter(block => !block.subtitle).map(block => block.text).join(' ')}</span><span className="overview-open" aria-hidden="true">이야기 펼치기 <ArrowRight size={13} /></span></span></button></li>)}

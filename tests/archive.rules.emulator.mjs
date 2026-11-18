@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
 import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, setDoc, setLogLevel, updateDoc } from 'firebase/firestore'
-import { defaultTimeline } from '../src/lib/timeline.ts'
+import { timelineFixture } from './fixtures/timeline.mjs'
 import { defaultGalleryMetadata } from '../src/lib/gallery-catalog.ts'
 
 setLogLevel('silent')
@@ -10,7 +10,7 @@ const environment = await initializeTestEnvironment({ projectId: 'demo-kirari-ar
 const identity = (uid, verified = true, provider = 'google.com') => environment.authenticatedContext(uid, { email_verified: verified, firebase: { sign_in_provider: provider } }).firestore()
 const guest = environment.unauthenticatedContext().firestore()
 const adminA = identity('admin-a'), adminB = identity('admin-b'), memberA = identity('member-a'), memberB = identity('member-b')
-const { id, ...seed } = defaultTimeline[0]
+const { id, ...seed } = timelineFixture
 const timeline = { ...seed, revision: 1 }
 const gallery = { ...defaultGalleryMetadata, tags: ['켄지', '키요'], revision: 1 }
 try {
