@@ -1,9 +1,10 @@
 import { readdir, lstat, readFile, mkdir, copyFile, unlink } from 'node:fs/promises'
 import { resolve, join, relative, sep } from 'node:path'
-import { inspectImage, MAX_IMAGE_BYTES } from '../src/lib/profile-images.ts'
+import { inspectImage } from '../src/lib/profile-images.ts'
+import { parsePhotoMetadata } from '../src/lib/gallery-catalog.ts'
 
 export const photoFolders = ['img', 'gallery', 'profiles/kenji/old', 'profiles/kenji/new', 'profiles/kiyo/old', 'profiles/kiyo/new']
-const types = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
+const types = { png: 'image/png', apng: 'image/apng', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
 
 async function realDirectory(path) {
   const info = await lstat(path)
@@ -23,15 +24,14 @@ export async function listPhotos(root) {
       const path = join(directory, name)
       const info = await lstat(path)
       if (/^[a-f0-9]{64}\.json$/.test(name) && folder !== 'img') {
-        if (!info.isFile() || info.isSymbolicLink() || !info.size || info.size > 2048 || !names.includes(name.replace(/\.json$/, '.webp'))) throw new Error('Invalid photo credit file')
+        if (!info.isFile() || info.isSymbolicLink() || !info.size || info.size > 8192 || !['webp', 'png'].some(extension => names.includes(name.replace(/\.json$/, `.${extension}`)))) throw new Error('Invalid photo credit file')
         const credit = JSON.parse(await readFile(path, 'utf8'))
-        if (!credit || Object.keys(credit).join(',') !== 'credit' || typeof credit.credit !== 'string' || !credit.credit.trim() || credit.credit.length > 120
-          || [...credit.credit].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error('Invalid photo credit')
+        if (!parsePhotoMetadata(credit)) throw new Error('Invalid photo metadata')
         files.push({ path, folder, name, metadata: true })
         continue
       }
       const mime = types[name.split('.').at(-1).toLowerCase()]
-      if (!info.isFile() || info.isSymbolicLink() || !mime || !info.size || info.size > MAX_IMAGE_BYTES) throw new Error('Invalid photo file')
+      if (!info.isFile() || info.isSymbolicLink() || !mime || !info.size) throw new Error('Invalid photo file')
       inspectImage(new Uint8Array(await readFile(path)), mime)
       files.push({ path, folder, name })
     }

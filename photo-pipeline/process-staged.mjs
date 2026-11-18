@@ -1,10 +1,11 @@
 import { readdir, lstat, readFile, mkdir, writeFile, unlink } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { preparePhoto, MAX_BYTES } from './photos.mjs'
+import { preparePhoto } from './photos.mjs'
+import { parsePhotoMetadata } from '../src/lib/gallery-catalog.ts'
 
 const groups = { gallery: 'gallery', 'kenji-old': 'profiles/kenji/old', 'kenji-new': 'profiles/kenji/new', 'kiyo-old': 'profiles/kiyo/old', 'kiyo-new': 'profiles/kiyo/new' }
-const types = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
+const types = { png: 'image/png', apng: 'image/apng', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
 export async function processStaged(root) {
   const base = resolve(root), staging = join(base, 'staging')
   const info = await lstat(staging)
@@ -18,17 +19,21 @@ export async function processStaged(root) {
     for (const name of await readdir(directory)) {
       const path = join(directory, name), fileInfo = await lstat(path)
       if (!fileInfo.isFile() || fileInfo.isSymbolicLink()) throw new Error('Invalid staged file')
-      let photo, credit
+      let photo, credit, metadata
       try {
-        const match = /^[a-f0-9]{64}\.(png|jpg|webp|gif|json)$/.exec(name)
-        if (!match || !fileInfo.size || fileInfo.size > (match[1] === 'json' ? 7_100_000 : MAX_BYTES)) throw new Error('Invalid staged image')
+        const match = /^[a-f0-9]{64}\.(png|apng|jpg|webp|gif|json)$/.exec(name)
+        if (!match || !fileInfo.size) throw new Error('Invalid staged image')
         let input = await readFile(path), mime = types[match[1]]
         if (match[1] === 'json') {
           const record = JSON.parse(input.toString('utf8'))
-          if (!record || Object.keys(record).sort().join(',') !== 'credit,image,mime,version' || record.version !== 1
+          if (!record || !['credit,image,mime,version', 'credit,image,metadata,mime,version'].includes(Object.keys(record).sort().join(',')) || record.version !== 1
             || !Object.values(types).includes(record.mime) || typeof record.credit !== 'string' || !record.credit.trim() || record.credit.length > 120
             || [...record.credit].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) || typeof record.image !== 'string' || (record.image.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(record.image))) throw new Error('Invalid photo metadata')
           input = Buffer.from(record.image, 'base64'); mime = record.mime; credit = record.credit.trim()
+          if (Object.hasOwn(record, 'metadata')) {
+            metadata = parsePhotoMetadata(record.metadata)
+            if (!metadata || metadata.credit !== credit) throw new Error('Invalid photo metadata')
+          }
         }
         photo = await preparePhoto(input, mime, groups[group])
       } catch { rejected++; await unlink(path); continue }
@@ -43,8 +48,8 @@ export async function processStaged(root) {
       try { await writeFile(join(base, photo.path), Buffer.from(photo.content, 'base64'), { flag: 'wx' }) }
       catch (error) { if (error.code !== 'EEXIST') throw error }
       if (credit) {
-        const metadataPath = join(base, photo.path.replace(/\.webp$/, '.json'))
-        try { await writeFile(metadataPath, JSON.stringify({ credit }), { flag: 'wx' }) }
+        const metadataPath = join(base, photo.path.replace(/\.(?:webp|png)$/, '.json'))
+        try { await writeFile(metadataPath, JSON.stringify(metadata || { credit }), { flag: 'wx' }) }
         catch (error) { if (error.code !== 'EEXIST') throw error }
       }
       await unlink(path)

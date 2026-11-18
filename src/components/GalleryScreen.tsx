@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ImagePlus, Maximize2, Search, X } from 'lucide-react'
 import { copyrightLabel } from '../lib/gallery-catalog'
+import { sortGalleryByCredit } from '../lib/gallery'
 import { galleryGroups } from '../lib/gallery-storage'
 import type { GalleryImage } from '../lib/gallery-storage'
 import type { useGallery } from '../lib/useGallery'
@@ -15,7 +16,6 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
   const [editing, setEditing] = useState(false)
   const [editItem, setEditItem] = useState<GalleryImage | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [title, setTitle] = useState('')
   const [tags, setTags] = useState('')
   const [album, setAlbum] = useState('')
   const [credit, setCredit] = useState('')
@@ -25,10 +25,10 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
   useEffect(() => { if (!admin) editor.current?.close() }, [admin])
   const groups = mode === '전체보기' ? [] : galleryGroups(gallery.items, mode)
   const activeGroup = groups.includes(group) ? group : ''
-  const items = gallery.items.filter(item => (!activeGroup || (mode === '태그' ? item.tags.includes(activeGroup) : (item.album || '미분류') === activeGroup)) && `${item.title} ${item.album} ${item.tags.join(' ')} ${item.credit}`.toLowerCase().includes(query.toLowerCase()))
+  const items = sortGalleryByCredit(gallery.items.filter(item => (!activeGroup || (mode === '태그' ? item.tags.includes(activeGroup) : (item.album || '미분류') === activeGroup)) && `${item.title} ${item.album} ${item.tags.join(' ')} ${item.credit}`.toLowerCase().includes(query.toLowerCase())))
   function open(item: GalleryImage) { setSelected(item); setDeleting(false); dialog.current?.showModal() }
   function edit(item: GalleryImage) {
-    dialog.current?.close(); setEditItem(item); setEditing(true); setTitle(item.title); setTags(item.tags.join(', ')); setAlbum(item.album); setCredit(item.credit); setError(''); editor.current?.showModal()
+    dialog.current?.close(); setEditItem(item); setEditing(true); setTags(item.tags.join(', ')); setAlbum(item.album); setCredit(item.credit); setError(''); editor.current?.showModal()
   }
   async function saveMetadata() {
     if (!admin || gallery.busy) return
@@ -36,12 +36,12 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
     const parsedTags = [...new Set(tags.split(/[,，]/).map(tag => tag.trim().replace(/^#/, '')).filter(Boolean))]
     if (parsedTags.length > 20 || parsedTags.some(tag => tag.length > 40)) { setError('태그는 20개 이하, 각각 40자 이하로 입력해 주세요.'); return }
     setError('')
-    const metadata = { title: title.trim(), tags: parsedTags, album: album.trim(), credit: credit.trim() }
+    const metadata = { title: editItem.title, tags: parsedTags, album: album.trim(), credit: credit.trim() }
     if (await gallery.edit(editItem, metadata)) editor.current?.close()
   }
   return <>
     {admin && <div className="archive-toolbar"><div className="archive-editor-actions">
-<PhotoUpload />
+<PhotoUpload items={gallery.items} />
 </div></div>}
     <div className="gallery-tools">
 <div className="filter-tabs" aria-label="갤러리 분류">{(['전체보기', '태그', '앨범'] as const).map(value => <button key={value} aria-pressed={mode === value} onClick={() => { setMode(value); setGroup('') }}>{value}</button>)}</div>
@@ -64,7 +64,6 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 </div>
 <div className="gallery-caption">
 <div>
-<strong>{item.title}</strong>
 <span>{item.tags.map(tag => `#${tag}`).join(' ')}</span>
 {item.credit && <span className="gallery-credit">{copyrightLabel(item.credit)}</span>}
 </div>
@@ -81,7 +80,6 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 </button>{selected && <>
 <img src={selected.src} alt={selected.title} />
 <div>
-<strong>{selected.title}</strong>
 <span>{copyrightLabel(selected.credit)}</span>
 </div>
 <div>{selected.album || '미분류'} · {selected.tags.map(tag => `#${tag}`).join(' ')}</div>{admin && <div>
@@ -92,10 +90,8 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 </dialog>
     <dialog ref={editor} className="archive-editor" aria-label="그림 정보 편집" onClose={() => setEditing(false)} onCancel={event => { if (gallery.busy) event.preventDefault() }}>{editing && admin && <form onSubmit={event => { event.preventDefault(); void saveMetadata() }}>
 <h2>그림 정보 편집</h2>
-<p>제목·태그·앨범·저작권자를 저장하면 모든 방문자에게 반영돼요.</p>
+<p>태그·앨범·저작권자를 저장하면 모든 방문자에게 반영돼요.</p>
 <fieldset disabled={gallery.busy}>
-<label>그림 제목<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} />
-</label>
 <label>태그<input maxLength={820} placeholder="켄지, 키요, 페어 (쉼표로 구분)" value={tags} onChange={event => setTags(event.target.value)} />
 </label>
 <label>앨범<input maxLength={80} placeholder="예: 첫 데이트" value={album} onChange={event => setAlbum(event.target.value)} />

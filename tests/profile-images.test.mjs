@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createIllustrationLibrary, selectedProfileImages, inspectImage, MAX_IMAGE_BYTES, pickProfileImage, validateProfileImage } from '../src/lib/profile-images.ts'
+import { createIllustrationLibrary, selectedProfileImages, inspectImage, pickProfileImage, validateProfileImage } from '../src/lib/profile-images.ts'
 
 test('private checkout images retain filenames and character/version grouping', () => {
   const library = createIllustrationLibrary({
@@ -65,20 +65,13 @@ test('SVG, HTML, forged MIME, truncated headers and invalid JPEG paths fail clos
   assert.throws(() => inspectImage(png(0, 10), 'image/png'))
 })
 
-test('dimensions and pixel count are bounded before decoding', async () => {
-  let decoded = false
-  const decode = async () => { decoded = true; throw new Error('should never be called') }
-  await assert.rejects(validateProfileImage(new Blob([png(4097, 10)], { type: 'image/png' }), decode))
-  await assert.rejects(validateProfileImage(new Blob([png(4096, 4096)], { type: 'image/png' }), decode))
-  assert.equal(decoded, false)
-})
-
-test('empty and oversized files never reach the decoder', async () => {
-  let decoded = false
-  const decode = async () => { decoded = true; throw new Error('should never be called') }
-  await assert.rejects(validateProfileImage(new Blob([], { type: 'image/png' }), decode))
-  await assert.rejects(validateProfileImage(new Blob([new Uint8Array(MAX_IMAGE_BYTES + 1)], { type: 'image/png' }), decode))
-  assert.equal(decoded, false)
+test('large dimensions and files above 5MB are accepted without application limits', async () => {
+  for (const [width, height, size] of [[4097, 10, 24], [4096, 4096, 24], [8000, 6000, 6 * 1024 * 1024]]) {
+    const bytes = new Uint8Array(size); bytes.set(png(width, height))
+    await validateProfileImage(new Blob([bytes], { type: 'image/png' }), async () => ({ width, height, close() {} }))
+  }
+  await validateProfileImage(new Blob([png()], { type: 'image/apng' }), async () => ({ width: 200, height: 400, close() {} }))
+  await assert.rejects(validateProfileImage(new Blob([], { type: 'image/png' })))
 })
 
 test('decode failures and inconsistent decoded dimensions are rejected and bitmaps close', async () => {

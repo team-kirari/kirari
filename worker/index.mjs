@@ -1,5 +1,6 @@
-import { inspectImage, MAX_IMAGE_BYTES } from '../src/lib/profile-images.ts'
+import { inspectImage } from '../src/lib/profile-images.ts'
 import { Buffer } from 'node:buffer'
+import { parsePhotoMetadata } from '../src/lib/gallery-catalog.ts'
 
 const origin = 'https://team-kirari.github.io'
 const targets = { gallery: 'gallery', 'profiles/kenji/old': 'kenji-old', 'profiles/kenji/new': 'kenji-new', 'profiles/kiyo/old': 'kiyo-old', 'profiles/kiyo/new': 'kiyo-new' }
@@ -25,7 +26,7 @@ export async function authorizeAdmin(request, env, fetcher) {
   return 200
 }
 
-async function readBounded(request) {
+async function readImage(request) {
   if (!request.body) throw new Error('empty')
   const reader = request.body.getReader(), chunks = []
   let size = 0
@@ -34,7 +35,6 @@ async function readBounded(request) {
       const { done, value } = await reader.read()
       if (done) break
       size += value.byteLength
-      if (size > MAX_IMAGE_BYTES) { await reader.cancel(); throw new Error('size') }
       chunks.push(value)
     }
   } finally { reader.releaseLock() }
@@ -52,7 +52,7 @@ export async function handleUpload(request, env, fetcher = fetch) {
   const localOrigin = /^http:\/\/(?:127\.0\.0\.1|localhost):5173$/.test(env.PHOTO_LOCAL_ORIGIN || '') ? env.PHOTO_LOCAL_ORIGIN : null
   if (!requestOrigin || requestOrigin !== origin && requestOrigin !== localOrigin) return reply(403, { error: '허용되지 않은 요청이에요.' })
   headers['Access-Control-Allow-Origin'] = requestOrigin
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Photo-Credit' } })
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Photo-Credit, X-Photo-Metadata' } })
   if (request.method !== 'POST') return reply(405, { error: 'POST만 지원해요.' })
   try {
     if (!env.PHOTO_GITHUB_WRITE_TOKEN || !env.FIREBASE_API_KEY || !env.FIREBASE_PROJECT_ID) return reply(503, { error: '업로드 서버 설정을 확인해 주세요.' })
@@ -69,14 +69,21 @@ export async function handleUpload(request, env, fetcher = fetch) {
     credit = decodeURIComponent(request.headers.get('X-Photo-Credit') || '').trim()
     if (!credit || credit.length > 120 || [...credit].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error('credit')
   } catch { return reply(400, { error: '저작권자 이름을 120자 이하로 입력해 주세요.' }) }
+  let metadata
+  try {
+    const header = request.headers.get('X-Photo-Metadata')
+    if (header && header.length > 16000) throw new Error('size')
+    metadata = header ? parsePhotoMetadata(JSON.parse(decodeURIComponent(header))) : null
+    if (header && (!metadata || metadata.credit !== credit)) throw new Error('metadata')
+  } catch { return reply(400, { error: '제목·태그·앨범 정보를 확인해 주세요.' }) }
   const target = new URL(request.url).searchParams.get('target')
   if (!Object.hasOwn(targets, target)) return reply(400, { error: '등록 위치를 확인해 주세요.' })
   const mime = request.headers.get('Content-Type')
   let bytes
   try {
-    bytes = await readBounded(request)
+    bytes = await readImage(request)
     inspectImage(bytes, mime)
-  } catch { return reply(400, { error: '사진 형식·용량·크기를 확인해 주세요.' }) }
+  } catch { return reply(400, { error: '사진 형식과 내용을 확인해 주세요.' }) }
   const id = await hexDigest(bytes)
   const path = `staging/${targets[target]}/${id}.json`
   const url = `https://api.github.com/repos/team-kirari/kirari-private/contents/${path}`
@@ -85,7 +92,7 @@ export async function handleUpload(request, env, fetcher = fetch) {
     const existing = await fetcher(`${url}?ref=main`, { headers: githubHeaders, signal: AbortSignal.timeout(15000) })
     if (existing.status === 200) return reply(202, { status: 'staged', duplicate: true })
     if (existing.status !== 404) throw new Error('storage')
-    const result = await fetcher(url, { method: 'PUT', headers: githubHeaders, signal: AbortSignal.timeout(20000), body: JSON.stringify({ message: 'Stage public photo for validation', content: Buffer.from(JSON.stringify({ version: 1, mime, credit, image: Buffer.from(bytes).toString('base64') })).toString('base64'), branch: 'main' }) })
+    const result = await fetcher(url, { method: 'PUT', headers: githubHeaders, signal: AbortSignal.timeout(20000), body: JSON.stringify({ message: 'Stage public photo for validation', content: Buffer.from(JSON.stringify({ version: 1, mime, credit, ...(metadata ? { metadata } : {}), image: Buffer.from(bytes).toString('base64') })).toString('base64'), branch: 'main' }) })
     if (result.status !== 201) throw new Error('storage')
     return reply(202, { status: 'staged', duplicate: false })
   } catch { return reply(502, { error: '저장소 등록에 실패했어요. 같은 파일로 다시 시도해 주세요.' }) }

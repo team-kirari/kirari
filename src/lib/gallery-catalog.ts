@@ -1,6 +1,24 @@
 export type GalleryMetadata = { title: string, tags: string[], album: string, credit: string, deleted: boolean, revision: number }
 export const defaultGalleryMetadata: GalleryMetadata = { title: '등록한 그림', tags: [], album: '', credit: '', deleted: false, revision: 0 }
 
+export type PhotoMetadata = Pick<GalleryMetadata, 'title' | 'tags' | 'album' | 'credit'>
+
+// Both legacy copyright sidecars and new upload metadata are public data.
+export function parsePhotoMetadata(value: unknown): PhotoMetadata | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const item = value as PhotoMetadata
+  const keys = Object.keys(item).sort().join(',')
+  if (keys !== 'credit' && keys !== 'album,credit,tags,title') return null
+  const fields = keys === 'credit' ? { title: '등록한 그림', tags: [], album: '', credit: item.credit } : item
+  const text = (value: unknown, max: number) => typeof value === 'string' && value.length <= max && ![...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
+  if (!text(fields.credit, 120) || !fields.credit.trim() || !text(fields.title, 120) || !fields.title.trim()
+    || !text(fields.album, 80) || !Array.isArray(fields.tags) || fields.tags.length > 20
+    || fields.tags.some(tag => !text(tag, 40) || !tag.trim()) || new Set(fields.tags).size !== fields.tags.length) return null
+  const tags = fields.tags.map(tag => tag.trim())
+  if (new Set(tags).size !== tags.length) return null
+  return { title: fields.title.trim(), tags, album: fields.album.trim(), credit: fields.credit.trim() }
+}
+
 export function parseGalleryMetadata(value: unknown): GalleryMetadata | null {
   if (!value || typeof value !== 'object') return null
   const item = value as GalleryMetadata

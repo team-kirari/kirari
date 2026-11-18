@@ -38,7 +38,7 @@ test('imports only allowed raster folders, retains names, mirrors deletions and 
   await assert.rejects(copyPhotos(from, join(from, 'nested')))
 })
 
-test('photo builds accept only bounded copyright sidecars paired with approved WebP files', async () => {
+test('photo builds accept only bounded copyright sidecars paired with approved image files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'kirari-photo-credit-'))
   const from = join(root, 'from'), to = join(root, 'to')
   for (const folder of photoFolders) await mkdir(join(from, folder), { recursive: true })
@@ -51,9 +51,25 @@ test('photo builds accept only bounded copyright sidecars paired with approved W
   assert.equal(files.filter(file => file.metadata).length, 1)
   assert.equal(await copyPhotos(from, to), 2)
   assert.deepEqual(JSON.parse(await readFile(join(to, `gallery/${id}.json`), 'utf8')), { credit: '테스트 작가' })
+  const metadata = { credit: '테스트 작가', title: '새 그림', tags: ['켄지', '키요'], album: '새 앨범' }
+  await writeFile(join(from, `gallery/${id}.json`), JSON.stringify(metadata))
+  assert.equal(await copyPhotos(from, to, { mirror: true }), 2)
+  assert.deepEqual(JSON.parse(await readFile(join(to, `gallery/${id}.json`), 'utf8')), metadata)
   await writeFile(join(from, `gallery/${id}.json`), JSON.stringify({ credit: '작가', private: 'forbidden' }))
   await assert.rejects(listPhotos(from))
   await writeFile(join(from, `gallery/${id}.json`), JSON.stringify({ credit: '작가' }))
   await writeFile(join(from, `gallery/${'b'.repeat(64)}.json`), JSON.stringify({ credit: 'orphan' }))
   await assert.rejects(listPhotos(from))
+})
+
+test('published APNG PNG and its album metadata survive the asset copy', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'kirari-apng-assets-')), from = join(root, 'from'), to = join(root, 'to')
+  for (const folder of photoFolders) await mkdir(join(from, folder), { recursive: true })
+  const id = 'c'.repeat(64), bytes = Buffer.alloc(24)
+  bytes.set([137,80,78,71,13,10,26,10]); bytes.write('IHDR', 12); bytes.writeUInt32BE(2, 16); bytes.writeUInt32BE(3, 20)
+  const metadata = { title: 'animation.apng', album: '앨범', tags: [], credit: '작가' }
+  await writeFile(join(from, `gallery/${id}.png`), bytes)
+  await writeFile(join(from, `gallery/${id}.json`), JSON.stringify(metadata))
+  assert.equal(await copyPhotos(from, to), 2)
+  assert.deepEqual(await readFile(join(to, `gallery/${id}.png`)), bytes)
 })

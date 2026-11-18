@@ -4,6 +4,7 @@ import kenji from '@private-assets/img/켄지.png'
 import kiyo from '@private-assets/img/키요.png'
 import kiyoSD from '@private-assets/img/키요SD.png'
 import kenjiSD from '@private-assets/img/켄지SD.png'
+import { parsePhotoMetadata } from './lib/gallery-catalog'
 
 export const art = { portrait, pair, kenji, kiyo, kiyoSD, kenjiSD }
 export const navigation = [
@@ -16,13 +17,12 @@ export const navigation = [
 ] as const
 export type Route = typeof navigation[number]['id'] | 'not-found'
 
-const galleryCredits = import.meta.glob<{ credit?: unknown }>('@private-assets/gallery/*.json', { eager: true, import: 'default' })
+const galleryCredits = import.meta.glob<unknown>('@private-assets/gallery/*.json', { eager: true, import: 'default' })
 
 // Only newly uploaded gallery files belong here; character/hero art stays separate.
-export const gallery: { id: string, tags: string[], title: string, category: string, src: string, credit: string, className: string }[] = Object.entries(import.meta.glob<string>('@private-assets/gallery/*.webp', { eager: true, query: '?url', import: 'default' }))
+export const gallery: { id: string, tags: string[], title: string, album: string, category: string, src: string, credit: string, className: string }[] = Object.entries(import.meta.glob<string>('@private-assets/gallery/*.{webp,png}', { eager: true, query: '?url', import: 'default' }))
   .flatMap(([path, src]) => {
-    const id = path.split('/').at(-1)?.replace(/\.webp$/, '') ?? ''
-    const metadata = galleryCredits[path.replace(/\.webp$/, '.json')]
-    const credit = metadata && Object.keys(metadata).join(',') === 'credit' && typeof metadata.credit === 'string' && metadata.credit.length <= 120 ? metadata.credit : ''
-    return /^[a-f0-9]{64}$/.test(id) ? [{ id, src, title: '등록한 그림', tags: [], category: '', credit, className: '' }] : []
+    const id = path.split('/').at(-1)?.replace(/\.(?:webp|png)$/, '') ?? ''
+    const metadata = parsePhotoMetadata(galleryCredits[path.replace(/\.(?:webp|png)$/, '.json')]) ?? { title: '등록한 그림', tags: [], album: '', credit: '' }
+    return /^[a-f0-9]{64}$/.test(id) ? [{ id, src, ...metadata, category: metadata.album, className: '' }] : []
   })

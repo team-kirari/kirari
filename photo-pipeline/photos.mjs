@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
+import { prepareApng } from './png.mjs'
 
-export const MAX_BYTES = 5 * 1024 * 1024
 export const targets = ['gallery', 'profiles/kenji/old', 'profiles/kenji/new', 'profiles/kiyo/old', 'profiles/kiyo/new']
 
 export async function preparePhoto(input, mime, target) {
   if (!targets.includes(target)) throw new Error('Invalid target')
-  if (!Buffer.isBuffer(input) || !input.length || input.length > MAX_BYTES) throw new Error('Invalid size')
-  const formats = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/webp': 'webp', 'image/gif': 'gif' }
+  if (!Buffer.isBuffer(input) || !input.length) throw new Error('Invalid size')
+  const formats = { 'image/png': 'png', 'image/apng': 'png', 'image/jpeg': 'jpeg', 'image/webp': 'webp', 'image/gif': 'gif' }
   // Detect before decoding: SVG/HTML and mismatched MIME never reach the decoder.
   const signature = input.subarray(0, 12)
   const detected = signature.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? 'png'
@@ -15,14 +15,18 @@ export async function preparePhoto(input, mime, target) {
       : ['GIF87a', 'GIF89a'].includes(signature.subarray(0, 6).toString()) ? 'gif'
         : signature.subarray(0, 4).toString() === 'RIFF' && signature.subarray(8, 12).toString() === 'WEBP' ? 'webp' : ''
   if (!detected || formats[mime] !== detected) throw new Error('Invalid format')
-  const image = sharp(input, { limitInputPixels: 16_000_000, failOn: 'warning', animated: true })
-  const meta = await image.metadata()
-  if (meta.format !== detected || !meta.width || !meta.height || meta.width > 4096 || meta.height > 4096
-    || meta.width * meta.height > 16_000_000 || (meta.pages ?? 1) > 1) throw new Error('Invalid dimensions or animation')
-  // Full decode + re-encode strips EXIF/GPS and other input metadata. Static WebP output only.
-  const output = await image.rotate().webp({ lossless: true }).toBuffer()
-  if (output.length > MAX_BYTES) throw new Error('Encoded image too large')
+  const apng = detected === 'png' ? await prepareApng(input) : null
+  let output = apng, extension = apng ? 'png' : 'webp'
+  if (!output) {
+    const image = sharp(input, { limitInputPixels: false, failOn: 'warning', animated: true })
+    const meta = await image.metadata()
+    if (meta.format !== detected || !meta.width || !meta.height) throw new Error('Invalid dimensions')
+    // PNG avoids the WebP encoder's fixed dimension ceiling for large stills.
+    if ((meta.pages ?? 1) === 1 && (meta.width > 16383 || meta.height > 16383)) {
+      output = await image.rotate().png().toBuffer(); extension = 'png'
+    } else output = await image.rotate().webp({ lossless: true }).toBuffer()
+  }
   const id = createHash('sha256').update(output).digest('hex')
-  return { path: `assets/${target}/${id}.webp`, content: output.toString('base64') }
+  return { path: `assets/${target}/${id}.${extension}`, content: output.toString('base64') }
 }
 

@@ -1,6 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { appearanceGallery } from '../src/lib/gallery.ts'
+import { appearanceGallery, sortGalleryByCredit } from '../src/lib/gallery.ts'
+
+test('gallery sorts by copyright name, keeps ties stable and places absent names last without mutating input', () => {
+  const items = [
+    { id: 'missing', credit: '' },
+    { id: 'na', credit: '나래' },
+    { id: 'ga-label', credit: ' ⓒ 가람 님 ' },
+    { id: 'da', credit: '다온' },
+    { id: 'ga', credit: '가람' },
+    { id: 'blank', credit: '  ' },
+  ]
+  const original = [...items]
+  assert.deepEqual(sortGalleryByCredit(items).map(item => item.id), ['ga-label', 'ga', 'na', 'da', 'missing', 'blank'])
+  assert.deepEqual(items, original)
+  assert.deepEqual(sortGalleryByCredit([]), [])
+})
 
 test('appearance references follow character tags and exclude all profile sources', () => {
   const solo = { src: 'solo.png', tags: ['켄지'] }

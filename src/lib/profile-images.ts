@@ -18,8 +18,7 @@ export function createIllustrationLibrary(files: Record<string, string>): Illust
   return result
 }
 
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const allowedTypes = ['image/png', 'image/apng', 'image/jpeg', 'image/webp', 'image/gif']
 
 export function inspectImage(bytes: Uint8Array, mime: string) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -59,13 +58,12 @@ export function inspectImage(bytes: Uint8Array, mime: string) {
       offset += size
     }
   }
-  if (!allowedTypes.includes(mime) || mime !== type || !width || !height) throw new Error('PNG·JPEG·WebP·GIF 이미지의 실제 형식을 확인해 주세요.')
-  if (width > 4096 || height > 4096 || width * height > 16_000_000) throw new Error('이미지는 가로·세로 4096px 이하, 총 1600만 픽셀 이하로 등록해 주세요.')
+  if (!allowedTypes.includes(mime) || (mime === 'image/apng' ? 'image/png' : mime) !== type || !width || !height) throw new Error('PNG·JPEG·WebP·GIF 이미지의 실제 형식을 확인해 주세요.')
   return { width, height }
 }
 
 export async function validateProfileImage(blob: Blob, decode = (image: Blob) => createImageBitmap(image, { imageOrientation: 'none' })) {
-  if (!(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_IMAGE_BYTES) throw new Error('이미지는 한 장에 5MB 이하로 등록해 주세요.')
+  if (!(blob instanceof Blob) || blob.size === 0) throw new Error('내용이 있는 이미지 파일을 선택해 주세요.')
   const expected = inspectImage(new Uint8Array(await blob.arrayBuffer()), blob.type)
   let bitmap: Awaited<ReturnType<typeof decode>>
   try { bitmap = await decode(blob) } catch { throw new Error('이미지를 읽을 수 없어요. 다른 파일로 다시 등록해 주세요.') }

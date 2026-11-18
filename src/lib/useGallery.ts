@@ -29,7 +29,7 @@ export function useGallery() {
     return () => { active = false; unsubscribe?.(); sharedStore.current = null }
   }, [])
   const sharedItems: GalleryImage[] = publicGallery.flatMap(item => {
-    const metadata = catalog[item.id] ?? { ...defaultGalleryMetadata, credit: item.credit }
+    const metadata = catalog[item.id] ?? { ...defaultGalleryMetadata, title: item.title, tags: item.tags, album: item.album, credit: item.credit }
     return metadata.deleted ? [] : [{ ...item, ...metadata, category: metadata.album || '미분류' }]
   })
   async function edit(item: GalleryImage, metadata: Pick<GalleryMetadata, 'title' | 'tags' | 'album' | 'credit'>, deleted = false) {
