@@ -1,0 +1,26 @@
+/* Original font files; sources and terms: docs/story-fonts.md, public/font-licenses/. */
+@font-face{
+  font-family:'Kirari Paperlogy';src:local('Paperlogy-4Regular'),url('../assets/story-fonts/Paperlogy-4Regular.ttf') format('truetype');
+  font-style:normal;font-weight:400;font-display:swap;
+}
+@font-face{
+  font-family:'Kirari Paperlogy';src:local('Paperlogy-6SemiBold'),url('../assets/story-fonts/Paperlogy-6SemiBold.ttf') format('truetype');
+  font-style:normal;font-weight:600;font-display:swap;
+}
+@font-face{
+  font-family:'Kirari Ownglyph Corncorn';
+  src:local('Ownglyph corncorn'),local('온글잎 콘콘체'),url('https://ownglyph-out-bucket.s3.ap-northeast-2.amazonaws.com/c9d001d1-c8ac-4e41-95fd-b4e7383160aa/%EC%98%A8%EA%B8%80%EC%9E%8E%20%EC%BD%98%EC%BD%98%EC%B2%B4.woff2') format('woff2');
+  font-style:normal;font-weight:400;font-display:swap;
+}
+@font-face{
+  font-family:'Kirari RIDIBatang';src:local('RIDIBatang'),url('../assets/story-fonts/RIDIBatang.otf') format('opentype');
+  font-style:normal;font-weight:400;font-display:swap;
+}
+@font-face{
+  font-family:'Kirari Chosun Myeongjo';src:local('ChosunNm'),local('조선일보명조'),url('../assets/story-fonts/ChosunNm.ttf') format('truetype');
+  font-style:normal;font-weight:400;font-display:swap;
+}
+@font-face{
+  font-family:'Kirari Galmuri14';src:local('Galmuri14'),url('../assets/story-fonts/Galmuri14.woff2') format('woff2');
+  font-style:normal;font-weight:400;font-display:swap;
+}

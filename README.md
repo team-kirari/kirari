@@ -5,7 +5,9 @@
 
 ## 현재 상태
 
-사진 원본용 `team-kirari/kirari-private` 비공개 저장소로 기존 55장을 옮기고 앱 저장소에서는 제거했습니다. 결제 연결 없이 사용할 Cloudflare Worker 마스터키 업로드와 Actions 검증·Pages 재배포 코드를 추가했습니다. **Worker Secret·저장소 간 토큰 연결과 실제 업로드·자동 배포는 아직 완료하지 않았습니다.** 앱은 Git 추적에서 제외한 `.local/kirari-private/assets/`의 사진을 사용합니다. [현재 상태·연결 순서](docs/private-photos.md)를 참고하세요.
+이야기 작성·수정·미리보기·비밀번호 열람을 제공합니다. 배포 사이트에서도 Firebase 관리자가 저장하면 Worker가 GitHub 비공개 저장소에 바로 커밋하는 API와 화면 연결을 추가하고 이야기 Worker와 Firebase 서버 변수를 배포했습니다. GitHub 쓰기 Secret 등록을 완료했고, 사용자로부터 앱의 공개 API URL 변수 등록 완료를 전달받았습니다. 로컬 개발용 `http://127.0.0.1:5173` Origin도 서버에 연결했습니다. **Pages 배포와 실제 글 저장 확인은 아직 필요합니다.** [원격 저장 연결·제한·확인 항목](docs/remote-stories.md)을 참고하세요. 원격 API URL이 없는 `npm run dev`에서는 기존처럼 인접한 `../kirari-private` checkout의 `stories/`에 로컬 저장하며 기존 개인 글을 자동 업로드하지 않습니다. [로컬 모드 사용법](docs/local-stories.md)을 참고하세요.
+
+사진 원본용 `team-kirari/kirari-private` 비공개 저장소로 기존 55장을 옮기고 앱 저장소에서는 제거했습니다. 결제 연결 없이 사용할 Cloudflare Worker 마스터키 업로드와 Actions 검증·Pages 재배포 코드를 추가했습니다. **Worker Secret·저장소 간 토큰 연결과 실제 업로드·자동 배포는 아직 완료하지 않았습니다.** 앱은 로컬에서는 위에서 선택한 checkout의 `assets/`, CI에서는 Git 추적에서 제외한 `.local/kirari-private/assets/`의 공개 승인된 사진을 사용합니다. [현재 상태·연결 순서](docs/private-photos.md)를 참고하세요.
 
 현재는 외관 미리보기 앱을 구현한 단계입니다. 비공개 원본 저장소를 `.local/kirari-private`에 clone한 뒤 `npm ci`, `npm run dev`로 실행할 수 있습니다.
 홈 위젯, 프로필, 갤러리와 이미지 확대, 이야기·기록의 준비 화면, 로컬 방명록 시연을 제공합니다.

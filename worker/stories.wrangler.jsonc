@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "kirari-stories",
+  "main": "stories.mjs",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "keep_vars": true,
+  "observability": { "enabled": false },
+  "ratelimits": [{ "name": "STORY_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }]
+}

@@ -48,6 +48,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Check private photo token configuration
+        if: github.event_name != 'pull_request'
+        env:
+          PRIVATE_ASSETS_READ_TOKEN: ${{ secrets.PRIVATE_ASSETS_READ_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$PRIVATE_ASSETS_READ_TOKEN" ]]; then
+            echo "::error::Set the PRIVATE_ASSETS_READ_TOKEN Actions repository secret in team-kirari/kirari. Use a fine-grained PAT with Contents read access to team-kirari/kirari-private."
+            exit 1
+          fi
       - name: Check out approved public photo sources
         if: github.event_name != 'pull_request'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -71,6 +81,11 @@ jobs:
         env:
           WRANGLER_SEND_METRICS: 'false'
           WRANGLER_LOG_PATH: .local/wrangler.log
+      - name: Check story Worker bundle
+        run: npx wrangler deploy --dry-run --config worker/stories.wrangler.jsonc --outdir .local/story-worker-bundle
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_LOG_PATH: .local/wrangler-story.log
       - name: Build public site
         run: npm run build
         env:
@@ -79,6 +94,7 @@ jobs:
           VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_PHOTO_UPLOAD_URL: ${{ vars.VITE_PHOTO_UPLOAD_URL }}
+          VITE_STORY_API_URL: ${{ vars.VITE_STORY_API_URL }}
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4

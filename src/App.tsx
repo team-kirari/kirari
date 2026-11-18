@@ -25,6 +25,7 @@ import { useGuestbook } from './lib/useGuestbook'
 import { ProfileScreen } from './components/ProfileScreen'
 import { useSharedProfiles } from './lib/useSharedProfiles'
 import { PhotoUpload } from './components/PhotoUpload'
+import { StoryScreen } from './components/StoryScreen'
 import { personalityTags } from './lib/profiles'
 import type { CharacterProfile, PersonId, Profiles } from './lib/profiles'
 
@@ -139,7 +140,7 @@ function InnerScreen({ route, navigate, query, setQuery, guest, admin, sharedPro
   return <section className="inner-screen"><button className="back-link" onClick={e => navigate('home', e)}><ArrowLeft size={15} /> 홈으로</button><div className="page-heading"><div><>{route !== 'profile' && <span className="page-kicker">kirari <span>/</span> {navigation.find(n => n.id === route)?.label || '404'}</span>}<h1 tabIndex={-1}>{info[0]}{route !== 'profile' && <span>✦</span>}</h1>{info[1] && <p>{info[1]}</p>}</></div>{route !== 'profile' && <span className="page-icon">{route === 'not-found' ? <Search size={28} /> : (() => { const Icon = icons[route]; return <Icon size={28} strokeWidth={1.5} /> })()}</span>}</div>
     {route === 'gallery' && <GalleryScreen query={query} setQuery={setQuery} />}
     {route === 'profile' && <ProfileScreen initialPerson={profilePerson} admin={admin} shared={sharedProfiles} />}
-    {route === 'story' && <div className="story-empty"><div className="empty-illustration"><BookOpen size={56} strokeWidth={1} /><span>✧</span><img src={art.kiyoSD} alt="" /></div><h2>아직 펼치지 않은 이야기</h2><p>이야기가 등록되면 이곳에 모아 보여 드릴게요.</p><span className="category-tag">콘텐츠 준비 중</span></div>}
+    {route === 'story' && <StoryScreen admin={admin} />}
     {route === 'log' && <div className="log-list"><article><span className="log-dot" /><div className="log-date">미리보기</div><div><span className="category-tag">갤러리</span><h2>켄지와 키요의 그림 모음</h2><p>제공해 주신 일러스트 6장을 갤러리에서 볼 수 있어요.</p><button className="soft-button" onClick={e => navigate('gallery', e)}>갤러리 열기 <ArrowUpRight size={15} /></button></div><img src={art.pair} alt="" /></article><article><span className="log-dot pink" /><div className="log-date">준비 중</div><div><span className="category-tag">기록</span><h2>앞으로 쌓일 기록들</h2><p>실제 업데이트 기록은 다음 단계에서 연결합니다.</p></div></article></div>}
     {route === 'guest' && <GuestScreen guest={guest} admin={admin} />}
     {route === 'not-found' && <div className="empty-state"><span className="error-number">404</span><button className="primary-button" onClick={e => navigate('home', e)}>홈으로 돌아가기 <ArrowUpRight size={16} /></button></div>}

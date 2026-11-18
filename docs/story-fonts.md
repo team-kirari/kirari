@@ -1,0 +1,33 @@
+# 이야기 폰트
+
+사이트 기본 폰트를 초기값으로 유지합니다. 작성 화면·미리보기·읽기 화면은 같은 폰트 목록을 쓰고, 작성자가 고른 폰트 ID는 글과 함께 저장합니다. 독자가 읽기 화면에서 바꾼 폰트는 원문 설정을 수정하지 않습니다. 기존 `serif`·`sans` 값은 시스템 명조·시스템 고딕으로 계속 읽을 수 있습니다. KoPub 바탕·돋움은 사용자 요청에 따라 제외했습니다.
+
+## 출처와 제공 방식
+
+| 폰트 | 공식 출처 | 제공 방식 |
+| --- | --- | --- |
+| 페이퍼로지 1.001 | [공식 소개·라이선스](https://freesentation.blog/paperlogyfont), [제작자 원본 ZIP](https://github.com/Freesentation/paperlogy/raw/refs/heads/main/Paperlogy-1.001.zip) | 원본 Regular·SemiBold TTF를 앱에서 제공. SIL OFL 1.1 전문 포함 |
+| 온글잎 콘콘체 | [온글잎 공식 배포 페이지](https://www.ownglyph.com/trial/c9d001d1-c8ac-4e41-95fd-b4e7383160aa) | 공식 페이지가 사용하는 원본 WOFF2 URL을 직접 참조. 파일 복제·변환·재배포하지 않음 |
+| 리디바탕체 | [리디 공식 배포·라이선스](https://ridicorp.com/ridibatang/) | 공식 원본 OTF를 앱에서 제공. SIL OFL 1.1 전문과 원본 파일 내 저작권 표시 포함 |
+| 조선일보명조체 | [조선일보 공식 배포·조건](https://event.chosun.com/100/100font.html) | `ChosunNm.zip`의 원본 TTF를 변환·수정 없이 제공. 출처와 배포 조건 안내 포함 |
+| 갈무리14 2.40.3 | [제작자 저장소](https://github.com/quiple/galmuri), [제작자 안내](https://quiple.dev/font/galmuri) | 제작자가 배포한 `galmuri@2.40.3` 패키지의 원본 WOFF2와 OFL 전문 포함 |
+
+OFL 전문과 조선일보 출처·조건 안내는 `public/font-licenses/`에 있습니다. 원본 폰트 파일은 `src/assets/story-fonts/`에서 Vite가 해시 파일명으로 빌드합니다. 새 글의 기본값은 여전히 `default`이며 폰트를 미리 다운로드하는 preload는 추가하지 않았습니다.
+
+온글잎 콘콘체는 공식 사이트의 폰트 라이선스 모달에 웹폰트·웹서버 임베딩이 허용되어 있습니다. 해당 사이트의 `__NEXT_DATA__`에 공개된 `woff2Url`만 사용합니다. 허용한 외부 호스트는 `ownglyph-out-bucket.s3.ap-northeast-2.amazonaws.com` 하나이며, 선택 시 이 호스트에 일반적인 폰트 요청(IP와 브라우저 요청 정보)이 전달됩니다. 글 본문·비밀번호를 보내는 기능은 없습니다. 공식 URL의 HTTP 200·WOFF2 헤더·익명 교차 출처 요청 허용을 명령줄로 확인했습니다. 외부 폰트의 네트워크·배포 상태에 따라 로딩이 실패할 수 있으며 이때 기본 폰트와 안내를 표시합니다.
+
+조선일보 원본 TTF는 약 23MB입니다. 배포된 형태를 유지하기 위해 포맷 변환이나 서브셋을 만들지 않았으며, 해당 폰트를 선택할 때만 요청합니다. 설치된 동일 폰트가 있으면 CSS `local()`을 우선 사용합니다. 웹 폰트 로딩·렌더링과 희귀 글자의 지원 여부는 사용자 브라우저에서 확인해야 합니다.
+
+## 포함 파일 SHA-256
+
+| 파일 | SHA-256 |
+| --- | --- |
+| Paperlogy-4Regular.ttf | `05e1021e3de620dddc97875342e2be1a94c5f8e9b9f792bd16c4c1d0085343b3` |
+| Paperlogy-6SemiBold.ttf | `ca92034a1c4602a57c55434dfdbf8428a0bb88ac84a99a5effec1a41f0118127` |
+| RIDIBatang.otf | `f13a49c0815d254ac15e392953a0b056613dec08ceb378e54eeed14c4fda9a54` |
+| ChosunNm.ttf | `715b213eb713a520366ae9634dade0fe377601a5523ad71a60453410db9bf81b` |
+| Galmuri14.woff2 | `79b34b22b86536d0fe9ebe7105dd5f20f56558d691c67a0c6432807a03ec5a82` |
+
+## 사용자 확인
+
+이야기 → 새 글 쓰기에서 본문을 입력하고 각 폰트를 선택합니다. 작성·미리보기·함께 보기·저장 후 읽기 화면에서 같은 폰트가 적용되는지 확인합니다. 사이트 기본값·테마 색은 유지되어야 하며, 온글잎 요청을 차단했을 때 기본 폰트와 실패 안내가 나와야 합니다. 네트워크가 느리면 조선일보명조의 첫 선택은 시간이 걸릴 수 있습니다. 에이전트는 브라우저를 열어 검증하지 않습니다.

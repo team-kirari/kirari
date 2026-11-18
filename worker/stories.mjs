@@ -1,0 +1,135 @@
+import { Buffer } from 'node:buffer'
+import { parseStoryDraft } from '../src/lib/stories.ts'
+
+const ORIGIN = 'https://team-kirari.github.io'
+const STORAGE = 'https://api.github.com/repos/team-kirari/kirari-private/contents/web-stories/archive.json'
+const UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
+const MAX_BYTES = 900_000
+const encode = value => new TextEncoder().encode(value)
+class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status }
+}
+const denied = () => new ApiError(404, '글을 열 수 없어요.')
+async function bounded(request) {
+  if (!request.body) throw new ApiError(400, '입력을 확인해 주세요.')
+  let length = 0
+  const chunks = []
+  for await (const chunk of request.body) {
+    length += chunk.byteLength
+    if (length > 500_000) throw new ApiError(413, '글의 용량이 너무 커요.')
+    chunks.push(Buffer.from(chunk))
+  }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { throw new ApiError(400, '입력을 확인해 주세요.') }
+}
+async function passwordDigest(password, salt) {
+  const key = await crypto.subtle.importKey('raw', encode(password), 'PBKDF2', false, ['deriveBits'])
+  return Buffer.from(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: Buffer.from(salt, 'hex'), iterations: 100_000 }, key, 256)).toString('hex')
+}
+async function protect(password) {
+  const salt = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('hex')
+  return `${salt}:${await passwordDigest(password, salt)}`
+}
+async function matches(password, hash) {
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128) return false
+  const [salt, expected] = hash.split(':')
+  const actual = await passwordDigest(password, salt)
+  let diff = 0
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ actual.charCodeAt(i)
+  return diff === 0
+}
+function present(story, uid) {
+  return { ...parseStoryDraft(story), id: story.id, revision: story.revision, createdAt: story.createdAt, updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid }
+}
+async function identity(request, env, fetcher) {
+  const authorization = request.headers.get('Authorization')
+  if (!authorization) return null
+  if (!/^Bearer [^\s]{1,8000}$/.test(authorization)) throw new ApiError(401, '다시 로그인해 주세요.')
+  const account = await fetcher(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: authorization.slice(7) }), signal: AbortSignal.timeout(10000),
+  })
+  if (!account.ok) throw new ApiError(401, '다시 로그인해 주세요.')
+  const user = (await account.json()).users?.[0]
+  if (!user?.emailVerified || user.disabled || typeof user.localId !== 'string' || !user.providerUserInfo?.some(item => item.providerId === 'google.com')) throw new ApiError(403, '관리자 로그인이 필요해요.')
+  // Firebase ID token + Firestore rules bind identity to this project and check the active Google sign-in provider.
+  const admin = await fetcher(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents/admins/${encodeURIComponent(user.localId)}`, { headers: { Authorization: authorization }, signal: AbortSignal.timeout(10000) })
+  if (!admin.ok || (await admin.json()).fields?.enabled?.booleanValue !== true) throw new ApiError(403, '관리자 권한을 확인해 주세요.')
+  return user.localId
+}
+function validArchive(items) {
+  return Array.isArray(items) && items.length <= 100 && new Set(items.map(item => item?.id)).size === items.length && items.every(item => item && parseStoryDraft(item)
+    && UUID.test(item.id) && typeof item.owner === 'string' && item.owner.length <= 128
+    && UUID.test(item.mutation) && Number.isSafeInteger(item.revision) && item.revision > 0
+    && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
+    && typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
+    && (item.passwordHash === null || typeof item.passwordHash === 'string' && /^[a-f0-9]{32}:[a-f0-9]{64}$/.test(item.passwordHash)))
+}
+export async function handleStories(request, env, fetcher = fetch) {
+  const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Origin', 'Content-Type': 'application/json' }
+  const reply = (status, value) => new Response(JSON.stringify(value), { status, headers })
+  const origin = request.headers.get('Origin')
+  const localOrigin = /^http:\/\/(?:127\.0\.0\.1|localhost):5173$/.test(env.STORY_LOCAL_ORIGIN || '') ? env.STORY_LOCAL_ORIGIN : null
+  if (!origin || origin !== ORIGIN && origin !== localOrigin) return reply(403, { error: '허용되지 않은 요청이에요.' })
+  headers['Access-Control-Allow-Origin'] = origin
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type' } })
+  try {
+    if (!env.STORY_GITHUB_WRITE_TOKEN || !env.FIREBASE_API_KEY || !env.FIREBASE_PROJECT_ID) throw new ApiError(503, '이야기 서버 연결을 설정해 주세요.')
+    // IP is not logged or persisted; Cloudflare's limiter stores the digest only.
+    const key = Buffer.from(await crypto.subtle.digest('SHA-256', encode(request.headers.get('CF-Connecting-IP') || 'unknown'))).toString('hex')
+    if (!(await env.STORY_LIMITER.limit({ key })).success) throw new ApiError(429, '잠시 후 다시 시도해 주세요.')
+    const match = /^\/stories(?:\/([a-f0-9-]+)(?:\/(unlock|edit))?)?$/.exec(new URL(request.url).pathname)
+    if (!match || match[1] && !UUID.test(match[1])) throw denied()
+    const [, id, action] = match
+    if (!['GET', 'POST'].includes(request.method)) throw new ApiError(405, '지원하지 않는 요청이에요.')
+    const writing = request.method === 'POST' && !id
+    const uid = writing || action === 'edit' || request.headers.has('Authorization') ? await identity(request, env, fetcher) : null
+    if ((writing || action === 'edit') && !uid) throw new ApiError(401, '관리자 로그인이 필요해요.')
+    const ghHeaders = { Authorization: `Bearer ${env.STORY_GITHUB_WRITE_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'kirari-stories', 'Content-Type': 'application/json' }
+    async function read() {
+      const response = await fetcher(`${STORAGE}?ref=main`, { headers: ghHeaders, signal: AbortSignal.timeout(15000) })
+      if (response.status === 404) return { items: [], sha: undefined }
+      if (!response.ok) throw new Error('storage')
+      const file = await response.json()
+      if (file.type !== 'file' || file.encoding !== 'base64' || typeof file.sha !== 'string' || file.size > MAX_BYTES || typeof file.content !== 'string' || file.content.length > 1_300_000) throw new Error('format')
+      const items = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'))
+      if (!validArchive(items)) throw new Error('format')
+      return { items, sha: file.sha }
+    }
+    const { items, sha } = await read()
+    if (request.method === 'GET') {
+      if (!id) return reply(200, items.map(story => ({ id: story.id, title: story.passwordHash ? '비밀번호로 보호된 이야기' : story.title, author: story.passwordHash ? '' : story.author, updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
+      const story = items.find(item => item.id === id)
+      if (!story || action === 'unlock' || (action === 'edit' ? story.owner !== uid : story.passwordHash !== null)) throw denied()
+      return reply(200, present(story, uid))
+    }
+    if (request.headers.get('Content-Type') !== 'application/json') throw new ApiError(415, 'JSON 입력만 지원해요.')
+    const input = await bounded(request)
+    if (id) {
+      const story = items.find(item => item.id === id)
+      if (action !== 'unlock' || !story || story.passwordHash && !await matches(input?.password, story.passwordHash)) throw denied()
+      return reply(200, present(story, uid))
+    }
+    const draft = parseStoryDraft(input)
+    if (!draft || !UUID.test(input.id) || !UUID.test(input.mutation) || !Number.isSafeInteger(input.revision) || input.revision < 0) throw new ApiError(400, '제목·본문·폰트 입력을 확인해 주세요.')
+    const previous = items.find(item => item.id === input.id)
+    if (previous && previous.owner !== uid) throw denied()
+    if (previous?.mutation === input.mutation) return reply(200, present(previous, uid))
+    if ((previous?.revision ?? 0) !== input.revision) throw new ApiError(409, '다른 곳에서 수정된 글이에요. 입력 내용을 복사하고 목록에서 다시 열어 주세요.')
+    let passwordHash = previous?.passwordHash ?? null
+    if (input.password !== null) {
+      if (typeof input.password !== 'string' || input.password.length > 128 || input.password && input.password.length < 8) throw new ApiError(400, '비밀번호는 8~128자로 입력해 주세요.')
+      passwordHash = input.password ? await protect(input.password) : null
+    }
+    const now = new Date().toISOString()
+    const story = { ...draft, id: input.id, owner: uid, mutation: input.mutation, revision: input.revision + 1, createdAt: previous?.createdAt ?? now, updatedAt: now, passwordHash }
+    const next = [...items.filter(item => item.id !== story.id), story]
+    const content = JSON.stringify(next)
+    if (next.length > 100 || Buffer.byteLength(content) > MAX_BYTES) throw new ApiError(413, '이야기 저장 한도(100개·전체 900KB)를 초과했어요.')
+    const response = await fetcher(STORAGE, { method: 'PUT', headers: ghHeaders, signal: AbortSignal.timeout(20000), body: JSON.stringify({ message: 'Save web story', content: Buffer.from(content).toString('base64'), branch: 'main', ...(sha ? { sha } : {}) }) })
+    if (response.status === 409 || response.status === 422) throw new ApiError(409, '다른 저장과 겹쳤어요. 저장 버튼을 다시 눌러 주세요.')
+    if (!response.ok) throw new Error('storage')
+    return reply(200, present(story, uid))
+  } catch (error) {
+    return reply(error instanceof ApiError ? error.status : 502, { error: error instanceof ApiError ? error.message : '원격 저장을 확인하지 못했어요. 입력 내용은 유지돼요. 같은 저장 버튼으로 다시 시도해 주세요.' })
+  }
+}
+export default { fetch: (request, env) => handleStories(request, env) }
