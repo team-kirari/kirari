@@ -1,0 +1,37 @@
+/* A single surface travels between selections without remounting. */
+.page-stack{position:relative;flex:1;min-width:0}
+.page-preparing{position:absolute;inset:0 0 auto;visibility:hidden;pointer-events:none}
+.page-preparing,.page-preparing *{visibility:hidden!important}
+.page-preparing,.page-preparing *,.page-preparing *::before,.page-preparing *::after{animation-play-state:paused!important}
+.selection-track{position:relative;isolation:isolate}
+.selection-indicator{position:absolute;left:0;top:0;z-index:-1;pointer-events:none;width:var(--selection-width,0px);height:var(--selection-height,0px);transform:translate(var(--selection-x,0px),var(--selection-y,0px));opacity:var(--selection-opacity,0);border-radius:11px;background:var(--pale)}
+.selection-track[data-selection-ready]>.selection-indicator{transition:transform 440ms cubic-bezier(.22,1,.36,1),width 440ms cubic-bezier(.22,1,.36,1),height 440ms cubic-bezier(.22,1,.36,1),opacity 180ms,background 250ms}
+.topbar nav.selection-track button.active,.topbar nav.selection-track button.active:hover{background:transparent}
+.side-rail.selection-track>.selection-indicator,.filter-tabs.selection-track>.selection-indicator{background:var(--accent);box-shadow:0 5px 14px #52698820}
+.side-rail.selection-track>.selection-indicator{border-radius:12px}
+.side-rail.selection-track button[aria-current=page]{background:transparent;box-shadow:none;color:white}
+.side-rail.selection-track button:hover{transform:none}
+.filter-tabs.selection-track button{background:transparent}
+.filter-tabs.selection-track button[aria-pressed=true]{background:transparent;color:white}
+.filter-tabs.selection-track{border-radius:9px;background:#eef2f8}
+.filter-tabs.selection-track>.selection-indicator{border-radius:9px}
+[data-theme=monochrome] .side-rail.selection-track button[aria-current=page]{background:transparent}
+
+@keyframes content-arrive{from{opacity:0}to{opacity:1}}
+@keyframes chrome-arrive{from{opacity:0;translate:0 -8px}to{opacity:1;translate:0 0}}
+@keyframes surface-arrive{from{opacity:0;transform:translateY(12px) scale(.975)}to{opacity:1;transform:none}}
+@keyframes gallery-arrive{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:no-preference){
+  .topbar{animation:chrome-arrive 550ms cubic-bezier(.22,1,.36,1) both}
+  .side-rail{animation:content-arrive 600ms 80ms cubic-bezier(.22,1,.36,1) both}
+  .gallery-masonry .gallery-item{opacity:0;transform:translateY(16px) scale(.96);transform-origin:center;transition:opacity 450ms ease,transform 550ms cubic-bezier(.22,1,.36,1),translate 350ms cubic-bezier(.22,1,.36,1)}
+  .gallery-masonry .gallery-item[data-visible=true][data-loaded]{opacity:1;transform:none}
+  .gallery-masonry .gallery-item:hover{translate:0 -4px}
+  .gallery-masonry .gallery-image img{transition:transform 650ms cubic-bezier(.22,1,.36,1)}
+  .gallery-masonry .gallery-item[data-loaded=true]:hover img{transform:scale(1.05)}
+  :is(dialog[open],.settings-panel,[popover]:popover-open){animation:surface-arrive 380ms cubic-bezier(.22,1,.36,1) both}
+}
+@media(prefers-reduced-motion:reduce){
+  .selection-track[data-selection-ready]>.selection-indicator{transition:none}
+  .page-transition,.topbar,.side-rail,.gallery-masonry .gallery-item{animation:none}
+}

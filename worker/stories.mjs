@@ -1,9 +1,9 @@
 import { handleUpload } from './index.mjs'
 import { Buffer } from 'node:buffer'
 import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
+import { buildStoryIndex, createStoryStore, StoryStoreConflict, STORY_REPO } from './story-store.mjs'
 
 const ORIGIN = 'https://team-kirari.github.io'
-const STORAGE = 'https://api.github.com/repos/team-kirari/kirari-private/contents/web-stories/archive.json'
 const UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
 const MAX_BYTES = 900_000
 const encode = value => new TextEncoder().encode(value)
@@ -56,14 +56,6 @@ async function identity(request, env, fetcher) {
   if (!admin.ok || (await admin.json()).fields?.enabled?.booleanValue !== true) throw new ApiError(403, '관리자 권한을 확인해 주세요.')
   return user.localId
 }
-function validArchive(items) {
-  return Array.isArray(items) && items.length <= 100 && new Set(items.map(item => item?.id)).size === items.length && items.every(item => item && parseStoryDraft(item)
-    && UUID.test(item.id) && typeof item.owner === 'string' && item.owner.length <= 128
-    && UUID.test(item.mutation) && Number.isSafeInteger(item.revision) && item.revision > 0
-    && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
-    && typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
-    && (item.passwordHash === null || typeof item.passwordHash === 'string' && /^[a-f0-9]{32}:[a-f0-9]{64}$/.test(item.passwordHash)))
-}
 export async function handleStories(request, env, fetcher = fetch) {
   const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Origin', 'Content-Type': 'application/json' }
   const reply = (status, value) => new Response(JSON.stringify(value), { status, headers })
@@ -85,19 +77,18 @@ export async function handleStories(request, env, fetcher = fetch) {
     const uid = writing || action === 'edit' || request.headers.has('Authorization') ? await identity(request, env, fetcher) : null
     if ((writing || action === 'edit') && !uid) throw new ApiError(401, '관리자 로그인이 필요해요.')
     const ghHeaders = { Authorization: `Bearer ${env.STORY_GITHUB_WRITE_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'kirari-stories', 'Content-Type': 'application/json' }
-    async function read() {
-      const response = await fetcher(`${STORAGE}?ref=main`, { headers: ghHeaders, signal: AbortSignal.timeout(15000) })
-      if (response.status === 404) return { items: [], sha: undefined }
-      if (!response.ok) throw new Error('storage')
-      const file = await response.json()
-      if (file.type !== 'file' || file.encoding !== 'base64' || typeof file.sha !== 'string' || file.size > MAX_BYTES || typeof file.content !== 'string' || file.content.length > 1_300_000) throw new Error('format')
-      const items = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'))
-      if (!validArchive(items)) throw new Error('format')
-      return { items, sha: file.sha }
+    const store = createStoryStore((path, body, method = 'GET') => fetcher(`${STORY_REPO}${path}`, {
+      method, headers: ghHeaders, signal: AbortSignal.timeout(20000),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }))
+    if (request.method === 'GET' && !id) {
+      // Compatibility for old archives until the one-time index build or next save.
+      const index = await store.readIndex() ?? buildStoryIndex(await store.readArchive())
+      return reply(200, index.map(({ owner, ...summary }) => ({ ...summary, editable: owner === uid })).sort(compareStories))
     }
-    const { items, sha } = await read()
+    const snapshot = writing ? await store.snapshot() : null
+    const items = snapshot ? snapshot.items : await store.readArchive()
     if (request.method === 'GET') {
-      if (!id) return reply(200, items.map(story => ({ id: story.id, title: story.title, author: story.passwordHash ? '' : story.author, createdAt: story.createdAt, ...(story.writtenOn ? { writtenOn: story.writtenOn } : {}), updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid })).sort(compareStories))
       const story = items.find(item => item.id === id)
       if (!story || action === 'unlock' || (action === 'edit' ? story.owner !== uid : story.passwordHash !== null)) throw denied()
       return reply(200, present(story, uid))
@@ -125,11 +116,10 @@ export async function handleStories(request, env, fetcher = fetch) {
     const next = [...items.filter(item => item.id !== story.id), story]
     const content = JSON.stringify(next)
     if (next.length > 100 || Buffer.byteLength(content) > MAX_BYTES) throw new ApiError(413, '이야기 저장 한도(100개·전체 900KB)를 초과했어요.')
-    const response = await fetcher(STORAGE, { method: 'PUT', headers: ghHeaders, signal: AbortSignal.timeout(20000), body: JSON.stringify({ message: 'Save web story', content: Buffer.from(content).toString('base64'), branch: 'main', ...(sha ? { sha } : {}) }) })
-    if (response.status === 409 || response.status === 422) throw new ApiError(409, '다른 저장과 겹쳤어요. 저장 버튼을 다시 눌러 주세요.')
-    if (!response.ok) throw new Error('storage')
+    await store.save(snapshot, next)
     return reply(200, present(story, uid))
   } catch (error) {
+    if (error instanceof StoryStoreConflict) return reply(409, { error: '다른 저장과 겹쳤어요. 저장 버튼을 다시 눌러 주세요.' })
     return reply(error instanceof ApiError ? error.status : 502, { error: error instanceof ApiError ? error.message : '원격 저장을 확인하지 못했어요. 입력 내용은 유지돼요. 같은 저장 버튼으로 다시 시도해 주세요.' })
   }
 }

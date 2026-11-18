@@ -187,7 +187,10 @@ service cloud.firestore {
       let leap = data.year % 4 == 0 && (data.year % 100 != 0 || data.year % 400 == 0);
       let days = data.month == 2 ? (leap ? 29 : 28) : (data.month in [4, 6, 9, 11] ? 30 : 31);
       return data.keys().hasAll(['year', 'month', 'day', 'dateLabel', 'title', 'body', 'revision', 'deleted'])
-        && data.keys().hasOnly(['year', 'month', 'day', 'dateLabel', 'title', 'body', 'revision', 'deleted'])
+        && data.keys().hasOnly(['year', 'month', 'day', 'dateLabel', 'title', 'body', 'revision', 'deleted', 'order', 'highlighted', 'subtitle'])
+        && (!('highlighted' in data) || data.highlighted is bool)
+        && (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 40))
+        && (!('order' in data) || (data.order is int && data.order >= 0 && data.order <= 1000000000))
         && data.year is int && data.year >= 1 && data.year <= 9999
         && data.month is int && data.month >= 1 && data.month <= 12
         && data.day is int && data.day >= 0 && data.day <= days

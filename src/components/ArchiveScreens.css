@@ -17,12 +17,82 @@
 @media(max-width:700px){.timeline-detail-overlay{padding:20px 4px}.timeline-detail-surface{grid-template-columns:26px minmax(0,1fr) 26px;gap:3px}.timeline-side-arrow{width:26px;height:44px}.timeline-side-arrow svg{width:23px}.timeline-detail-surface .timeline-scroll{min-height:0;border-radius:16px}.timeline-detail-surface .timeline-card{padding:24px 18px}}
 @media(prefers-reduced-motion:reduce){.timeline-detail-overlay{animation:none}.timeline-side-arrow{transition:none}}
 
-/* Keep each image and caption together; image height follows its natural ratio. */
-.gallery-grid.gallery-masonry{display:block;columns:3;column-gap:19px}
-.gallery-masonry .gallery-item{display:inline-block;vertical-align:top;width:100%;margin:0 0 22px;break-inside:avoid}
-.gallery-masonry .gallery-image{height:auto}
+/* Shortest-column placement preserves masonry and starts in horizontal order. */
+.gallery-grid.gallery-masonry{--gallery-columns:3;position:relative;display:grid;grid-template-columns:repeat(var(--gallery-columns),minmax(0,1fr));align-items:start;gap:22px 19px}
+.gallery-grid.gallery-masonry[data-masonry-ready]{display:block}
+.gallery-masonry[data-masonry-ready] .gallery-item{position:absolute}
+.gallery-masonry .gallery-item{display:block;width:100%;margin:0}
+.gallery-grid.gallery-masonry[hidden],.gallery-masonry .gallery-item[hidden]{display:none}
+.gallery-masonry .gallery-item:not([data-loaded]) .gallery-image{aspect-ratio:1}
+.gallery-masonry .gallery-item[data-loaded=error] .gallery-image{min-height:160px}
+.gallery-masonry .gallery-item .gallery-image{height:auto;border:0;border-radius:0;background:transparent;box-shadow:none}
 .gallery-masonry .gallery-image img{display:block;width:100%;height:auto;padding:0}
 .gallery-masonry .gallery-caption{overflow-wrap:anywhere}
 .gallery-masonry .gallery-caption>div{min-width:0}
-@media(max-width:1000px){.gallery-grid.gallery-masonry{columns:2;column-gap:13px}}
-@media(max-width:480px){.gallery-grid.gallery-masonry{columns:1}}
+dialog.art-dialog{position:fixed;inset:0;margin:auto;width:fit-content;max-width:min(92vw,900px);max-height:90svh;border-radius:16px}
+.art-dialog .dialog-inner{padding:8px}
+.art-dialog .dialog-inner>img{width:auto;height:auto;max-width:min(calc(92vw - 16px),884px);max-height:calc(90svh - 110px);margin:auto;object-fit:contain}
+.art-dialog .dialog-inner>div{flex-wrap:wrap;gap:6px 12px;padding:8px 8px 0;overflow-wrap:anywhere;font-size:11px}
+.art-dialog .dialog-inner>div:last-child{padding-bottom:4px}
+.art-dialog .dialog-close{top:12px;right:12px}
+@keyframes timeline-event-reveal{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:no-preference){
+  .timeline-overview[data-sequence-ready] .timeline-overview-track>li{opacity:0}
+  .timeline-overview[data-sequence-ready] .timeline-overview-track>li[data-revealed]{animation:timeline-event-reveal 500ms var(--timeline-reveal-delay,0ms) ease both}
+  .timeline-overview[data-sequence-ready] .timeline-overview-track>li:focus-within{opacity:1;animation:none}
+}
+@media(max-width:1000px){.gallery-grid.gallery-masonry{--gallery-columns:2;column-gap:13px}}
+@media(max-width:480px){.gallery-grid.gallery-masonry{--gallery-columns:1}}
+
+.archive-toolbar.timeline-toolbar{justify-content:flex-start;flex-direction:row;flex-wrap:wrap;gap:10px}
+.timeline-order-list{list-style:none;padding:8px 4px;margin:18px 0;max-height:50svh;overflow-y:auto;overscroll-behavior:contain}
+.timeline-order-list li{display:flex;align-items:center;gap:8px;padding:12px 6px;border:1px solid var(--pale);border-radius:12px;background:#fff;margin-bottom:8px}
+ .timeline-order-list li{position:relative}
+.timeline-order-list li.is-drag-source{background:var(--pale);border-style:dashed}.timeline-order-list li.is-drag-source>*{opacity:.25}
+.timeline-order-list li.insert-before:before,.timeline-order-list li.insert-after:after{content:'';position:absolute;left:0;right:0;height:3px;background:var(--accent);border-radius:4px;box-shadow:0 0 0 2px #fff;pointer-events:none;z-index:1}
+.timeline-order-list li.insert-before:before{top:-6px}.timeline-order-list li.insert-after:after{bottom:-6px}
+.timeline-order-dialog.is-sorting,.timeline-order-dialog.is-sorting *{cursor:grabbing!important;user-select:none}
+.timeline-order-ghost{position:fixed;z-index:10;display:flex;align-items:center;gap:14px;box-sizing:border-box;padding:12px 18px;border:2px solid var(--accent);border-radius:12px;background:#fff;color:var(--ink);box-shadow:0 14px 35px #33445b40;pointer-events:none;transform:rotate(-1deg);opacity:.96}
+
+.timeline-order-list .icon-button{flex-shrink:0}.timeline-order-handle{touch-action:none;cursor:grab}.timeline-order-handle:active{cursor:grabbing}
+.timeline-order-number{font-size:11px;color:var(--accent);min-width:20px}.timeline-order-label{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;overflow-wrap:anywhere}.timeline-order-label small{font-size:10px}.timeline-order-label strong{font-size:13px;font-weight:500}
+
+/* Keep viewport coordinates valid for the floating drag card during dialog entry. */
+.archive-editor.timeline-order-dialog[open]{animation-name:content-arrive}
+
+/* Milestones keep their label visible independently of hover or selection. */
+.timeline-overview-track .is-highlighted .overview-point{width:17px;height:17px;top:calc(50% - 8px);left:-2px;background:var(--accent);box-shadow:0 0 0 5px #fdfdff,0 0 0 7px var(--pink)}
+.overview-event-content{display:flex;flex-direction:column;gap:8px;min-width:0}
+.timeline-overview-track .is-highlighted .overview-event-content{padding:12px;border:1px solid var(--pink);border-radius:14px;background:#fff8fc;box-shadow:0 5px 20px #a86f9210}
+.timeline-event-subtitle{font-size:11px;line-height:1.6;font-weight:500;color:var(--accent);overflow-wrap:anywhere;white-space:pre-wrap;margin:0}
+.is-highlighted .timeline-event-subtitle{color:var(--pink)}
+@media(min-width:701px){.timeline-overview-track .above.is-highlighted .overview-event>.timeline-event-subtitle{order:-1}}
+.timeline-important-label{display:inline-block;font-size:9px;line-height:1.6;letter-spacing:1px;color:var(--accent);margin:0 8px 8px 0}
+.timeline-card.is-highlighted{border-color:var(--pink)}
+.timeline-detail-header>.timeline-event-subtitle{margin:-8px 0 16px}
+.archive-editor .timeline-highlight-field{flex-direction:row;align-items:center;gap:9px}
+.archive-editor .timeline-highlight-field input{width:16px;height:16px;accent-color:var(--accent)}
+.timeline-detail-close{position:absolute;right:46px;top:4px;z-index:2}
+@media(max-width:700px){
+  .timeline-overview{overflow-x:hidden;padding:24px}
+  .timeline-overview-canvas{width:100%!important}
+  .timeline-years{display:none}
+  .timeline-overview-track{display:flex;flex-direction:column;height:auto;padding-left:10px}
+  .timeline-overview-track:before{top:0;bottom:0;left:16px;right:auto;width:1px;height:auto;background:linear-gradient(var(--pale),var(--accent),var(--pale))}
+  .timeline-overview-track li{width:100%}
+  .timeline-overview-track button{padding:0 0 32px 30px;height:auto}
+  .timeline-overview-track .overview-point{left:0;top:24px}
+  .timeline-overview-track .is-highlighted .overview-point{left:-2px;top:22px}
+  .timeline-overview-track .overview-branch{left:6px;top:30px;bottom:auto;width:24px;height:1px}
+  .timeline-overview-track .overview-event{position:relative;inset:auto;padding:14px;gap:8px}
+  .timeline-overview-track .overview-date{font-size:11px}
+  .timeline-overview-track .overview-open{opacity:1}
+  .timeline-detail-overlay{position:fixed;inset:0;z-index:50;padding:24px 12px}
+  .timeline-detail-surface{grid-template-columns:minmax(0,1fr);grid-template-rows:28px minmax(0,1fr) 28px;gap:6px;height:min(640px,90svh)}
+  .timeline-side-arrow{width:100%;height:28px}
+  .timeline-side-arrow svg{transform:rotate(90deg)}
+  .timeline-detail-surface .timeline-scroll{flex-direction:column;overflow-x:hidden;overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior-y:contain}
+  .timeline-detail-surface .timeline-entry{width:100%;flex:0 0 100%}
+  .timeline-detail-close{right:4px;top:40px}
+}
+@media(prefers-reduced-motion:reduce){.timeline-detail-surface .timeline-scroll{scroll-snap-type:none}}

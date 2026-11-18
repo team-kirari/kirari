@@ -1,7 +1,7 @@
 import { collection, doc, getFirestore, limit, onSnapshot, query, runTransaction } from 'firebase/firestore'
 import type { FirebaseOptions } from 'firebase/app'
 import { getFirebaseApp } from './firebase-app'
-import { parseTimelineEvent } from './timeline'
+import { parseTimelineEvent, timelineOrderUpdates } from './timeline'
 import type { TimelineEvent } from './timeline'
 
 export function createTimelineStore(config: FirebaseOptions) {
@@ -14,6 +14,17 @@ export function createTimelineStore(config: FirebaseOptions) {
         if (items.some(item => !item)) { fail({ code: 'invalid-data' }); return }
         next(items as TimelineEvent[])
       }, fail)
+    },
+    async reorder(items: TimelineEvent[]) {
+      const updates = timelineOrderUpdates(items)
+      await runTransaction(database, async transaction => {
+        const references = updates.map(item => doc(database, 'timeline', item.id))
+        const snapshots = await Promise.all(references.map(reference => transaction.get(reference)))
+        snapshots.forEach((snapshot, index) => {
+          if (!snapshot.exists() || snapshot.data().deleted || snapshot.data().revision !== updates[index].revision) throw new Error('timeline-conflict')
+        })
+        updates.forEach((item, index) => transaction.set(references[index], item.payload))
+      })
     },
     async save(item: TimelineEvent) {
       const { id, ...data } = item

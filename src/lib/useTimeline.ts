@@ -29,11 +29,11 @@ export function useTimeline() {
     else { window.clearTimeout(timeout) }
     return () => { active = false; window.clearTimeout(timeout); unsubscribe?.(); store.current = null }
   }, [])
-  async function save(item: TimelineEvent) {
+  async function persist(action: (target: NonNullable<typeof store.current>) => Promise<void>) {
     if (!ready || !store.current || saving.current) return false
     saving.current = true; setBusy(true); setStatus('')
     try {
-      await store.current.save(item)
+      await action(store.current)
       setStatus('공개 타임라인에 저장했어요.')
       return true
     } catch (error) {
@@ -43,5 +43,5 @@ export function useTimeline() {
       return false
     } finally { saving.current = false; setBusy(false) }
   }
-  return { items, ready, busy, status, save }
+  return { items, ready, busy, status, save: (item: TimelineEvent) => persist(target => target.save(item)), reorder: (ordered: TimelineEvent[]) => persist(target => target.reorder(ordered)) }
 }

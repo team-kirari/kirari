@@ -71,11 +71,12 @@
 .story-loading{min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--ink);font-size:12px;animation:story-appear .3s ease both}
 .story-loading-ring{width:38px;height:38px;border:2px solid var(--pale);border-top-color:var(--accent);border-radius:50%;animation:story-spin 1s linear infinite}
 .story-loading-overlay{position:absolute;inset:0;z-index:2;display:grid;place-items:center;background:var(--page-bg);border-radius:12px;opacity:.96}
-.story-list{min-height:280px}
-.story-list article{animation:story-list-rise .6s cubic-bezier(.22,1,.36,1) both}
+.story-list{min-height:280px;overflow-x:clip;padding-inline:4px;margin-inline:-4px}
+.story-list article{animation:story-list-enter .65s cubic-bezier(.22,1,.36,1) both}
+.story-list article:focus-within{animation:none}
 .stories>.story-reader{animation:story-appear .5s ease both}
 @keyframes story-spin{to{transform:rotate(360deg)}}
-@keyframes story-list-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-@keyframes story-appear{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes story-list-enter{from{opacity:0;transform:translateX(36px)}to{opacity:1;transform:translateX(0)}}
+@keyframes story-appear{from{opacity:0}to{opacity:1}}
 @media(max-width:700px){.stories>.story-reader{width:100vw;max-width:none;margin:24px calc(50% - 50vw) 0;padding:35px 16px 65px;border-radius:0}}
 @media(prefers-reduced-motion:reduce){.story-loading,.story-loading-ring,.story-list article,.stories>.story-reader{animation:none}}

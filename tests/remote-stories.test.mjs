@@ -3,11 +3,15 @@ import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { handleStories } from '../worker/stories.mjs'
+import { createStoryStore, buildStoryIndex } from '../worker/story-store.mjs'
 
 const origin = 'https://team-kirari.github.io'
 const draft = { title: '공개 승인 합성 시험', author: '합성 작성자', body: '<script>alert(1)</script>\njavascript:alert(1)', font: 'default', password: '', id: randomUUID(), revision: 0, mutation: randomUUID() }
 function fixture() {
   let items = [], version = 0, conflict = false, enabled = true, writes = 0, failAfterWrite = false
+  let index = null, pendingTree, pendingCommit
+  const reads = []
+  const sha = value => String(value).padStart(40, '0')
   const env = { STORY_GITHUB_WRITE_TOKEN: 'fake-github-secret', FIREBASE_API_KEY: 'fake-key', FIREBASE_PROJECT_ID: 'fake-project', STORY_LIMITER: { limit: async () => ({ success: true }) } }
   const json = (value, status = 200) => new Response(JSON.stringify(value), { status })
   const fetcher = async (url, options) => {
@@ -17,20 +21,53 @@ function fixture() {
       return json({ users: [{ localId: token, emailVerified: token !== 'unverified', providerUserInfo: [{ providerId: 'google.com' }] }] })
     }
     if (url.includes('firestore')) return enabled && options.headers.Authorization !== 'Bearer member' ? json({ fields: { enabled: { booleanValue: true } } }) : json({}, 403)
-    assert.ok(url.startsWith('https://api.github.com/repos/team-kirari/kirari-private/contents/web-stories/archive.json'))
+    const path = url.replace('https://api.github.com/repos/team-kirari/kirari-private', '')
     assert.equal(options.headers.Authorization, 'Bearer fake-github-secret')
-    if (options.method !== 'PUT') return version ? json({ type: 'file', encoding: 'base64', size: Buffer.byteLength(JSON.stringify(items)), content: Buffer.from(JSON.stringify(items)).toString('base64'), sha: String(version) }) : json({}, 404)
-    const data = JSON.parse(options.body)
-    if (conflict || data.sha !== (version ? String(version) : undefined)) return json({}, 409)
-    assert.equal(data.branch, 'main')
-    items = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')); version++; writes++
-    if (failAfterWrite) { failAfterWrite = false; throw new Error('simulated lost response') }
-    return json({}, 201)
+    const data = options.body ? JSON.parse(options.body) : undefined
+    if (path.startsWith('/contents/')) {
+      reads.push(path)
+      const value = path.includes('/index.json') ? index : version ? items : null
+      if (value === null) return json({}, 404)
+      return json({ type: 'file', encoding: 'base64', size: Buffer.byteLength(JSON.stringify(value)), content: Buffer.from(JSON.stringify(value)).toString('base64'), sha: sha(version) })
+    }
+    if (path === '/git/ref/heads/main') return json({ object: { type: 'commit', sha: sha(version) } })
+    if (path === `/git/commits/${sha(version)}`) return json({ tree: { sha: sha(version) } })
+    if (path === '/git/trees') {
+      assert.equal(data.base_tree, sha(version))
+      pendingTree = data.tree
+      for (const file of pendingTree) {
+        assert.ok(['web-stories/archive.json', 'web-stories/index.json'].includes(file.path))
+        assert.equal(file.type, 'blob')
+        assert.equal(file.mode, '100644')
+      }
+      return json({ sha: sha(1001) }, 201)
+    }
+    if (path === '/git/commits' && options.method === 'POST') {
+      assert.equal(data.tree, sha(1001))
+      pendingCommit = data
+      return json({ sha: sha(1002) }, 201)
+    }
+    if (path === '/git/refs/heads/main') {
+      assert.equal(options.method, 'PATCH')
+      assert.equal(data.force, false)
+      assert.equal(data.sha, sha(1002))
+      if (conflict || pendingCommit.parents[0] !== sha(version)) return json({}, 422)
+      // Only the final reference update makes both files visible.
+      for (const file of pendingTree) {
+        if (file.path.endsWith('/archive.json')) items = JSON.parse(file.content)
+        else index = JSON.parse(file.content)
+      }
+      version++; writes++
+      if (failAfterWrite) { failAfterWrite = false; throw new Error('simulated lost response') }
+      return json({ object: { sha: sha(version) } })
+    }
+    assert.fail(`Unexpected GitHub endpoint: ${path}`)
+
   }
   async function request(path = '', body, token) {
     return handleStories(new Request(`https://kirari-stories.example.workers.dev/stories${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: origin, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), env, fetcher)
   }
-  return { env, request, items: () => items, writes: () => writes, conflict: value => { conflict = value }, enabled: value => { enabled = value }, loseResponse: () => { failAfterWrite = true }, corrupt: () => { items = [{ unexpected: true }]; version++ } }
+  return { env, request, store: createStoryStore((path, body, method = 'GET') => fetcher(`https://api.github.com/repos/team-kirari/kirari-private${path}`, { method, headers: { Authorization: 'Bearer fake-github-secret' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })), reads, index: () => index, setIndex: value => { index = value }, items: () => items, writes: () => writes, conflict: value => { conflict = value }, enabled: value => { enabled = value }, loseResponse: () => { failAfterWrite = true }, corrupt: () => { items = [{ unexpected: true }]; version++ } }
 }
 test('remote saves accept more than 100,000 characters within byte capacity', async () => {
   const f = fixture()
@@ -183,4 +220,76 @@ test('remote font sizes persist and invalid sizes cannot replace stored content'
   const edited = await f.request('', { ...draft, revision: 1, mutation: randomUUID(), fontSize: 32 }, 'A')
   assert.equal(edited.status, 200)
   assert.equal((await edited.json()).fontSize, 32)
+})
+
+test('list reads only the small index and never exposes owner or body', async () => {
+  const f = fixture()
+  await f.request('', { ...draft, body: 'a'.repeat(120_000) }, 'A')
+  assert.ok(Buffer.byteLength(JSON.stringify(f.index())) < 1000)
+  for (const role of [undefined, 'A', 'B']) {
+    f.reads.length = 0
+    const response = await f.request('', undefined, role)
+    assert.equal(response.status, 200)
+    assert.deepEqual(f.reads, ['/contents/web-stories/index.json?ref=main'])
+    const [summary] = await response.json()
+    assert.equal(summary.editable, role === 'A')
+    for (const field of ['body', 'passwordHash', 'owner', 'mutation']) assert.equal(field in summary, false)
+  }
+  assert.equal((await f.request('', undefined, 'member')).status, 403)
+})
+
+test('password and metadata changes update the index in the same commit; conflicts preserve both', async () => {
+  const f = fixture()
+  await f.request('', draft, 'A')
+  const update = { ...draft, revision: 1, mutation: randomUUID(), title: 'Changed title', writtenOn: '2000-01-01', password: 'secret' }
+  f.conflict(true)
+  assert.equal((await f.request('', update, 'A')).status, 409)
+  assert.equal(f.index()[0].title, draft.title)
+  assert.equal(f.items()[0].title, draft.title)
+  f.conflict(false)
+  assert.equal((await f.request('', update, 'A')).status, 200)
+  assert.deepEqual(f.index(), buildStoryIndex(f.items()))
+  assert.equal(f.index()[0].protected, true)
+  assert.equal(f.index()[0].author, '')
+  assert.equal((await f.request(`/${draft.id}`)).status, 404)
+  assert.equal((await f.request('', { ...update, revision: 2, mutation: randomUUID(), password: '' }, 'A')).status, 200)
+  assert.equal(f.index()[0].protected, false)
+  assert.equal(f.index()[0].author, draft.author)
+})
+
+test('legacy archives fall back without writes; explicit rebuild changes only the index', async () => {
+  const f = fixture()
+  await f.request('', draft, 'A')
+  f.setIndex(null)
+  const original = structuredClone(f.items())
+  const writes = f.writes()
+  assert.equal((await f.request()).status, 200)
+  assert.equal(f.writes(), writes)
+  await f.store.rebuildIndex()
+  assert.deepEqual(f.items(), original)
+  assert.deepEqual(f.index(), buildStoryIndex(original))
+  f.reads.length = 0
+  assert.equal((await f.request()).status, 200)
+  assert.equal(f.reads.length, 1)
+})
+
+test('malformed index fails closed without returning archive or extra fields', async () => {
+  const f = fixture()
+  await f.request('', draft, 'A')
+  const original = structuredClone(f.index())
+  for (const broken of [
+    [{ ...original[0], body: 'must not leak' }],
+    [{ ...original[0], protected: 'false' }],
+    [{ ...original[0], writtenOn: '2026-02-29' }],
+    [{ ...original[0], protected: true }],
+    [original[0], original[0]],
+    [{ ...original[0], title: 'x'.repeat(121) }],
+  ]) {
+    f.setIndex(broken)
+    f.reads.length = 0
+    const response = await f.request()
+    assert.equal(response.status, 502)
+    assert.equal(f.reads.length, 1)
+    assert.equal((await response.text()).includes('must not leak'), false)
+  }
 })

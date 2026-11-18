@@ -40,6 +40,16 @@ try {
   for (const bad of [{ year: 0 }, { month: 13 }, { month: 2, day: 30 }, { year: 2050, month: 2, day: 29 }, { month: 4, day: 31 }, { title: ' ' }, { body: '' }, { deleted: 'true' }, { body: 'x'.repeat(12001) }]) {
     await assertFails(setDoc(doc(adminA, 'timeline', 'invalid'), { ...timeline, ...bad }))
   }
+  await assertSucceeds(setDoc(doc(adminA, 'timeline', 'ordered'), { ...timeline, order: 0 }))
+  await assertFails(updateDoc(doc(memberA, 'timeline', 'ordered'), { order: 1, revision: 2 }))
+  await assertFails(updateDoc(doc(guest, 'timeline', 'ordered'), { order: 1, revision: 2 }))
+  await assertSucceeds(updateDoc(doc(adminB, 'timeline', 'ordered'), { order: 1, revision: 2 }))
+  for (const order of [-1, 1.5, '0', null, 1000000001]) await assertFails(setDoc(doc(adminA, 'timeline', 'bad-order'), { ...timeline, order }))
+  await assertSucceeds(setDoc(doc(adminA, 'timeline', 'milestone'), { ...timeline, highlighted: true, subtitle: 'First meeting' }))
+  assert.equal((await assertSucceeds(getDoc(doc(guest, 'timeline', 'milestone')))).data().subtitle, 'First meeting')
+  for (const database of [guest, memberA, memberB]) await assertFails(updateDoc(doc(database, 'timeline', 'milestone'), { highlighted: false, revision: 2 }))
+  await assertSucceeds(updateDoc(doc(adminB, 'timeline', 'milestone'), { highlighted: false, subtitle: '', revision: 2 }))
+  for (const bad of [{ highlighted: 'true' }, { highlighted: null }, { subtitle: 42 }, { subtitle: null }, { subtitle: 'x'.repeat(41) }]) await assertFails(setDoc(doc(adminA, 'timeline', 'bad-milestone'), { ...timeline, ...bad }))
   await assertSucceeds(setDoc(doc(adminA, 'timeline', 'leap'), { ...timeline, year: 2048, month: 2, day: 29 }))
   for (const bad of [{ tags: ['a', 'a'] }, { tags: ['x'.repeat(41)] }, { tags: Array.from({ length: 21 }, (_, i) => String(i)) }, { tags: [42] }, { title: ' ' }, { credit: 'x'.repeat(121) }]) {
     await assertFails(setDoc(doc(adminA, 'gallery', 'b'.repeat(64)), { ...gallery, ...bad }))

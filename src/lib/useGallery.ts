@@ -9,6 +9,7 @@ import type { createGalleryStore } from './firebase-gallery'
 export function useGallery() {
   const [catalog, setCatalog] = useState<Record<string, GalleryMetadata>>({})
   const [sharedReady, setSharedReady] = useState(false)
+  const [loading, setLoading] = useState(() => Boolean(getFirebaseConfig(import.meta.env)))
   const [sharedStatus, setSharedStatus] = useState('')
   const sharedStore = useRef<ReturnType<typeof createGalleryStore> | null>(null)
   const [busy, setBusy] = useState(false)
@@ -23,9 +24,9 @@ export function useGallery() {
       if (!active) return
       sharedStore.current = createGalleryStore(config)
       unsubscribe = sharedStore.current.subscribe(value => {
-        if (active) { setCatalog(value); setSharedReady(true); setSharedStatus('') }
-      }, () => { if (active) { setSharedReady(false); setSharedStatus('공용 그림 정보를 읽지 못했어요. 연결과 보안 규칙을 확인해 주세요.') } })
-    }).catch(() => { if (active) setSharedStatus('공용 저장소에 연결하지 못했어요.') })
+        if (active) { setCatalog(value); setSharedReady(true); setLoading(false); setSharedStatus('') }
+      }, () => { if (active) { setSharedReady(false); setLoading(false); setSharedStatus('공용 그림 정보를 읽지 못했어요. 연결과 보안 규칙을 확인해 주세요.') } })
+    }).catch(() => { if (active) { setLoading(false); setSharedStatus('공용 저장소에 연결하지 못했어요.') } })
     return () => { active = false; unsubscribe?.(); sharedStore.current = null }
   }, [])
   const sharedItems: GalleryImage[] = publicGallery.flatMap(item => {
@@ -46,5 +47,5 @@ export function useGallery() {
       return false
     } finally { locked.current = false; setBusy(false) }
   }
-  return { items: sharedItems, sharedReady, sharedStatus, busy, status, edit }
+  return { items: sharedItems, loading, sharedReady, sharedStatus, busy, status, edit }
 }
