@@ -1,4 +1,5 @@
-export const STORY_MAX_LENGTH = 100_000
+export const STORY_DEFAULT_FONT_SIZE = 18
+export const storyFontSizes = Array.from({ length: 21 }, (_, index) => index + 12)
 export const storyFonts = {
   default: { label: '사이트 기본', family: 'var(--font-sans)' },
   paperlogy: { label: '페이퍼로지', family: "'Kirari Paperlogy', var(--font-sans)", face: 'Kirari Paperlogy' },
@@ -6,28 +7,42 @@ export const storyFonts = {
   'ridi-batang': { label: '리디바탕체', family: "'Kirari RIDIBatang', var(--font-sans)", face: 'Kirari RIDIBatang' },
   'chosun-myeongjo': { label: '조선일보명조체', family: "'Kirari Chosun Myeongjo', var(--font-sans)", face: 'Kirari Chosun Myeongjo' },
   galmuri14: { label: '갈무리14', family: "'Kirari Galmuri14', var(--font-sans)", face: 'Kirari Galmuri14' },
-  // Keep existing stored font IDs readable.
-  serif: { label: '시스템 명조', family: "'Batang', '바탕', 'AppleMyungjo', serif" },
-  sans: { label: '시스템 고딕', family: "'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" },
 } as const
 export type StoryFont = keyof typeof storyFonts
-export type StoryDraft = { title: string, author: string, body: string, font: StoryFont }
+export type StoryDraft = { title: string, author: string, body: string, font: StoryFont, fontSize?: number, writtenOn?: string }
 export type Story = StoryDraft & { id: string, revision: number, createdAt: string, updatedAt: string, protected: boolean, editable?: boolean }
-export type StorySummary = Pick<Story, 'id' | 'title' | 'author' | 'updatedAt' | 'protected' | 'editable'>
+export type StorySummary = Pick<Story, 'id' | 'title' | 'author' | 'createdAt' | 'updatedAt' | 'writtenOn' | 'protected' | 'editable'>
 export type StoryBlock = { kind: 'paragraph', text: string } | { kind: 'scene' }
 
 export function isStoryFont(value: unknown): value is StoryFont {
   return typeof value === 'string' && Object.hasOwn(storyFonts, value)
 }
 
+// Date-only values keep the selected calendar day independent of browser timezone.
+export function isStoryDate(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && value >= '0001-01-01' && value <= '9999-12-31'
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value
+}
+
+export function storyDate(story: { writtenOn?: string, createdAt?: string, updatedAt: string }): string {
+  return story.writtenOn ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date(story.createdAt ?? story.updatedAt))
+}
+
+export function compareStories(a: StorySummary, b: StorySummary): number {
+  return storyDate(b).localeCompare(storyDate(a)) || b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)
+}
+
 export function parseStoryDraft(value: unknown): StoryDraft | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const data = value as Record<string, unknown>
+  const font = data.font === 'serif' || data.font === 'sans' ? 'default' : data.font
+  if (data.fontSize !== undefined && (typeof data.fontSize !== 'number' || !storyFontSizes.includes(data.fontSize))) return null
   if (typeof data.title !== 'string' || !data.title.trim() || data.title.length > 120
     || typeof data.author !== 'string' || data.author.length > 60
-    || typeof data.body !== 'string' || !data.body.trim() || data.body.length > STORY_MAX_LENGTH
-    || !isStoryFont(data.font)) return null
-  return { title: data.title.trim(), author: data.author.trim(), body: data.body.replace(/\r\n?/g, '\n'), font: data.font }
+    || typeof data.body !== 'string' || !data.body.trim()
+    || !isStoryFont(font) || data.writtenOn !== undefined && !isStoryDate(data.writtenOn)) return null
+  return { title: data.title.trim(), author: data.author.trim(), body: data.body.replace(/\r\n?/g, '\n'), font, ...(data.fontSize === undefined ? {} : { fontSize: data.fontSize as number }), ...(data.writtenOn === undefined ? {} : { writtenOn: data.writtenOn as string }) }
 }
 
 // Plain text only. A standalone *** line becomes a semantic scene separator.

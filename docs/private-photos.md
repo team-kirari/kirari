@@ -35,6 +35,12 @@ Worker의 202 응답은 **검증 대기 접수**입니다. Actions에서 Sharp�
 
 private 저장소의 기본 `GITHUB_TOKEN`은 해당 저장소의 검증 결과 커밋에만 사용합니다. 저장소 간 호출·사진 저장에는 위의 제한된 토큰을 사용합니다. 배포 빌드는 `.local/kirari-private`에 원본 저장소를 checkout하며 토큰 누락·접근 실패 시 중단합니다. 앱은 이 checkout의 `assets/` 안에 있는 허용된 사진만 사용합니다. PR 검증에는 private 저장소 checkout이나 Secret 전달을 하지 않고 생성한 1px 테스트 이미지 6장으로 빌드합니다. PR 빌드는 Pages에 배포하지 않습니다. Pages artifact에는 `dist/`만 업로드하며 staging·private `.git`·원본 저장소 전체를 복사하지 않습니다.
 
+### checkout에서 `Input required and not supplied: token`이 발생할 때
+
+사진 원본 checkout에 전달하는 `PRIVATE_ASSETS_READ_TOKEN`이 비어 있는지 확인합니다. `team-kirari/kirari`의 **Settings → Secrets and variables → Actions → Repository secrets → New repository secret**에서 이 이름으로 등록합니다. Variables나 `kirari-private` 저장소에만 등록하면 앱 빌드에서 사용할 수 없습니다. Environment secret으로 등록했다면 현재 `build` 작업은 environment를 지정하지 않으므로 repository secret으로 등록합니다.
+
+값은 위 표의 `kirari-private` 전용 Contents read 권한을 가진 fine-grained PAT이며, 조직 승인이 필요하면 먼저 승인해야 합니다. 토큰을 코드나 채팅에 붙여 넣지 않습니다. 등록 후 실패한 Actions 실행에서 **Re-run failed jobs**를 실행합니다. 워크플로는 토큰 존재 여부만 사전 검사하며, 만료·권한·조직 승인 여부는 실제 checkout으로 확인합니다.
+
 ## 운영 연결 순서
 
 1. 이 앱 변경을 검토해 `kirari/main`에 반영합니다. 기존 staged 변경과 구분해 커밋 범위를 결정하세요. private workflow가 참조하는 `photo-pipeline/`이 먼저 main에 있어야 합니다.

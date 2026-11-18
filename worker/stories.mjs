@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import { parseStoryDraft } from '../src/lib/stories.ts'
+import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
 
 const ORIGIN = 'https://team-kirari.github.io'
 const STORAGE = 'https://api.github.com/repos/team-kirari/kirari-private/contents/web-stories/archive.json'
@@ -96,7 +96,7 @@ export async function handleStories(request, env, fetcher = fetch) {
     }
     const { items, sha } = await read()
     if (request.method === 'GET') {
-      if (!id) return reply(200, items.map(story => ({ id: story.id, title: story.passwordHash ? '비밀번호로 보호된 이야기' : story.title, author: story.passwordHash ? '' : story.author, updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
+      if (!id) return reply(200, items.map(story => ({ id: story.id, title: story.passwordHash ? '비밀번호로 보호된 이야기' : story.title, author: story.passwordHash ? '' : story.author, createdAt: story.createdAt, ...(story.writtenOn ? { writtenOn: story.writtenOn } : {}), updatedAt: story.updatedAt, protected: story.passwordHash !== null, editable: story.owner === uid })).sort(compareStories))
       const story = items.find(item => item.id === id)
       if (!story || action === 'unlock' || (action === 'edit' ? story.owner !== uid : story.passwordHash !== null)) throw denied()
       return reply(200, present(story, uid))
@@ -120,7 +120,7 @@ export async function handleStories(request, env, fetcher = fetch) {
       passwordHash = input.password ? await protect(input.password) : null
     }
     const now = new Date().toISOString()
-    const story = { ...draft, id: input.id, owner: uid, mutation: input.mutation, revision: input.revision + 1, createdAt: previous?.createdAt ?? now, updatedAt: now, passwordHash }
+    const story = { ...draft, ...(draft.fontSize === undefined && previous?.fontSize !== undefined ? { fontSize: previous.fontSize } : {}), ...(draft.writtenOn === undefined && previous?.writtenOn ? { writtenOn: previous.writtenOn } : {}), id: input.id, owner: uid, mutation: input.mutation, revision: input.revision + 1, createdAt: previous?.createdAt ?? now, updatedAt: now, passwordHash }
     const next = [...items.filter(item => item.id !== story.id), story]
     const content = JSON.stringify(next)
     if (next.length > 100 || Buffer.byteLength(content) > MAX_BYTES) throw new ApiError(413, '이야기 저장 한도(100개·전체 900KB)를 초과했어요.')

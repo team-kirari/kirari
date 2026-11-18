@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { ArrowLeft, LockKeyhole, Pencil, Plus } from 'lucide-react'
-import { isStoryFont, parseStoryDraft, STORY_MAX_LENGTH, storyBlocks, storyFonts } from '../lib/stories'
+import { compareStories, isStoryDate, isStoryFont, parseStoryDraft, storyDate, STORY_DEFAULT_FONT_SIZE, storyBlocks, storyFonts, storyFontSizes } from '../lib/stories'
 import type { Story, StoryDraft, StoryFont, StorySummary } from '../lib/stories'
 import { useStoryFont } from '../lib/useStoryFont'
 import './StoryFonts.css'
 import './StoryScreen.css'
 import { getFirebaseConfig } from '../lib/auth'
+import { emptyStoryBackups, readStoryBackups, storyDraftKey, writeStoryBackups } from '../lib/story-drafts'
+import type { StoryDraftBackup, StoryDraftBackups } from '../lib/story-drafts'
+import { storyStatistics } from '../lib/story-statistics'
 
 const remoteUrl = import.meta.env.VITE_STORY_API_URL as string | undefined
 const remote = Boolean(remoteUrl)
@@ -55,33 +58,83 @@ function readStory(data: unknown): Story {
 const formatDate = (date: string) => new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeZone: 'Asia/Seoul' }).format(new Date(date))
 async function readList(admin = false): Promise<StorySummary[]> {
   const data = await request('', undefined, admin)
-  if (!Array.isArray(data) || data.length > 1000 || data.some(item => !item || typeof item !== 'object' || typeof item.id !== 'string' || !/^[a-f0-9-]{36}$/.test(item.id) || typeof item.title !== 'string' || item.title.length > 120 || typeof item.author !== 'string' || item.author.length > 60 || typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt)) || typeof item.protected !== 'boolean')) throw new Error('이야기 목록의 형식을 확인해 주세요.')
-  return data
+  if (!Array.isArray(data) || data.length > 1000 || data.some(item => !item || typeof item !== 'object' || typeof item.id !== 'string' || !/^[a-f0-9-]{36}$/.test(item.id) || typeof item.title !== 'string' || item.title.length > 120 || typeof item.author !== 'string' || item.author.length > 60 || typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt)) || (item.writtenOn !== undefined && !isStoryDate(item.writtenOn)) || (item.createdAt !== undefined && (typeof item.createdAt !== 'string' || !Number.isFinite(Date.parse(item.createdAt)))) || typeof item.protected !== 'boolean')) throw new Error('이야기 목록의 형식을 확인해 주세요.')
+  return data.map(item => ({ ...item, createdAt: item.createdAt ?? item.updatedAt })).sort(compareStories)
 }
 
-function StoryReader({ draft, updatedAt, preview = false }: { draft: StoryDraft, updatedAt?: string, preview?: boolean }) {
+function StoryLoading() {
+  return <div className="story-loading" role="status"><span className="story-loading-ring" aria-hidden="true" /><span>이야기를 불러오는 중…</span></div>
+}
+
+function StoryReader({ draft, writtenOn, preview = false }: { draft: StoryDraft, writtenOn?: string, preview?: boolean }) {
   const fontStatus = useStoryFont(draft.font)
   return <article className="story-reader" aria-label={preview ? '게시글 미리보기' : '이야기 본문'} style={{ '--story-font': storyFonts[draft.font].family } as CSSProperties}>
-    <header className="story-title"><span>{preview ? '미리보기' : '이야기'}</span><h2>{draft.title || '제목'}</h2>{draft.author && <p>{draft.author}</p>}{updatedAt && <time dateTime={updatedAt}>{formatDate(updatedAt)}</time>}</header>
+    <header className="story-title">{!preview && <span>이야기</span>}<h2>{draft.title || '제목'}</h2>{draft.author && <p>w. {draft.author}</p>}{writtenOn && <time dateTime={writtenOn}>{formatDate(writtenOn)}</time>}</header>
     {fontStatus && <p className="story-font-status" role="status">{fontStatus}</p>}
-    <div className="story-prose">{storyBlocks(draft.body).map((block, index) => block.kind === 'scene'
+    <div className="story-prose" style={{ fontSize: draft.fontSize }}>{storyBlocks(draft.body).map((block, index) => block.kind === 'scene'
       ? <div className="story-scene-break" role="separator" aria-label="장면 전환" key={index}><span aria-hidden="true">＊ ＊ ＊</span></div>
       : <p key={index}>{block.text}</p>)}</div>
   </article>
 }
 
-function StoryEditor({ original, onSaved, onCancel }: { original?: Story, onSaved: (story: Story) => void, onCancel: () => void }) {
-  const [draft, setDraft] = useState<StoryDraft>(() => original ? { title: original.title, author: original.author, body: original.body, font: original.font } : { title: '', author: '', body: '', font: 'default' })
-  const [protect, setProtect] = useState(original?.protected ?? false)
+function StoryEditor({ original, onSaved, onCancel }: { original?: Story, onSaved: (story: Story, backupWarning?: string) => void, onCancel: () => void }) {
+  const [initialDraft] = useState<StoryDraft>(() => original ? { title: original.title, author: original.author, body: original.body, font: original.font, fontSize: original.fontSize ?? STORY_DEFAULT_FONT_SIZE, writtenOn: storyDate(original) } : { title: '', author: '', body: '', font: 'default', fontSize: STORY_DEFAULT_FONT_SIZE, writtenOn: storyDate({ updatedAt: new Date().toISOString() }) })
+  const backupKey = storyDraftKey(remote, original?.id)
+  const revision = original?.revision ?? 0
+  const [loadedBackups] = useState(() => {
+    try { return { data: readStoryBackups(window.localStorage, backupKey), error: '' } }
+    catch { return { data: emptyStoryBackups(), error: '브라우저 임시저장을 읽지 못했어요. 저장 설정을 확인하거나 임시저장을 초기화해 주세요.' } }
+  })
+  const restored = loadedBackups.data.auto?.revision === revision ? loadedBackups.data.auto : null
+  const [backups, setBackups] = useState<StoryDraftBackups>(loadedBackups.data)
+  const [draft, setDraft] = useState<StoryDraft>(restored?.draft ?? initialDraft)
+  const statisticsBody = useDeferredValue(draft.body)
+  const statistics = useMemo(() => storyStatistics(statisticsBody), [statisticsBody])
+  const [protect, setProtect] = useState(restored?.protect ?? original?.protected ?? false)
+  const [backupError, setBackupError] = useState(loadedBackups.error)
+  const backupDialog = useRef<HTMLDialogElement>(null)
+  const [backupStatus, setBackupStatus] = useState(restored ? '자동 임시저장한 글을 복원했어요.' : loadedBackups.data.auto ? '이전 버전의 자동 임시저장이 있어요. 슬롯 메뉴에서 불러올 수 있어요.' : '')
   const [password, setPassword] = useState('')
-  const [mode, setMode] = useState<'write' | 'preview' | 'split'>('write')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const fontStatus = useStoryFont(draft.font)
   const [error, setError] = useState('')
   const pending = useRef(false)
   const newId = useRef(crypto.randomUUID())
   const retry = useRef({ payload: '', mutation: '' })
-  const dirty = JSON.stringify(draft) !== JSON.stringify(original ? { title: original.title, author: original.author, body: original.body, font: original.font } : { title: '', author: '', body: '', font: 'default' }) || protect !== (original?.protected ?? false) || password.length > 0
+  const finished = useRef(false)
+  const contentDirty = JSON.stringify(draft) !== JSON.stringify(initialDraft) || protect !== (original?.protected ?? false)
+  const latest = useRef({ draft, protect, dirty: contentDirty || Boolean(restored) })
+  const saveAuto = useCallback((draft: StoryDraft, protect: boolean) => {
+    try {
+      const current = readStoryBackups(window.localStorage, backupKey)
+      const next = { ...current, auto: { draft, protect, revision, savedAt: new Date().toISOString() } }
+      writeStoryBackups(window.localStorage, backupKey, next)
+      setBackups(next); setBackupError(''); setBackupStatus('브라우저에 자동 임시저장했어요.')
+      return true
+    } catch { setBackupError('임시저장하지 못했어요. 브라우저 저장 공간과 저장 허용 설정을 확인해 주세요.'); return false }
+  }, [backupKey, revision])
+  useEffect(() => {
+    const shouldSave = contentDirty || latest.current.dirty
+    latest.current = { draft, protect, dirty: shouldSave }
+    if (!shouldSave) return
+    const timer = window.setTimeout(() => { if (!finished.current) saveAuto(draft, protect) }, 400)
+    return () => window.clearTimeout(timer)
+  }, [draft, protect, contentDirty, saveAuto])
+  useEffect(() => {
+    const flush = () => {
+      const current = latest.current
+      if (!finished.current && current.dirty) saveAuto(current.draft, current.protect)
+    }
+    window.addEventListener('pagehide', flush)
+    window.addEventListener('beforeunload', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      window.removeEventListener('beforeunload', flush)
+      flush()
+    }
+  }, [saveAuto])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft) || protect !== (original?.protected ?? false) || password.length > 0 || passwordConfirm.length > 0
   useEffect(() => {
     if (!dirty) return
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -89,10 +142,46 @@ function StoryEditor({ original, onSaved, onCancel }: { original?: Story, onSave
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
   function update(key: keyof StoryDraft, value: string) { setDraft(previous => ({ ...previous, [key]: value })) }
+  function openBackups() {
+    try { setBackups(readStoryBackups(window.localStorage, backupKey)); setBackupError('') }
+    catch { setBackupError('브라우저 임시저장을 읽지 못했어요. 저장 설정을 확인하거나 임시저장을 초기화해 주세요.') }
+    backupDialog.current?.showModal()
+  }
+  function restoreBackup(backup: StoryDraftBackup) {
+    if (dirty && !window.confirm('현재 작성 내용을 선택한 임시저장 글로 바꿀까요?')) return
+    latest.current = { draft: backup.draft, protect: backup.protect, dirty: true }
+    setDraft(backup.draft); setProtect(backup.protect); setPassword(''); setPasswordConfirm('')
+    setError(''); setBackupStatus('임시저장 글을 불러왔어요. 비밀번호는 다시 입력해 주세요.')
+    backupDialog.current?.close()
+  }
+  function changeSlot(index: number, remove = false) {
+    if (!remove && backups.slots[index] && !window.confirm(`슬롯 ${index + 1}을 현재 작성 내용으로 덮어쓸까요?`)) return
+    try {
+      const next = readStoryBackups(window.localStorage, backupKey)
+      next.slots[index] = remove ? null : { draft, protect, revision, savedAt: new Date().toISOString() }
+      writeStoryBackups(window.localStorage, backupKey, next)
+      setBackups(next); setBackupError(''); setBackupStatus(`슬롯 ${index + 1}을 ${remove ? '삭제' : '임시저장'}했어요.`)
+    } catch { setBackupError('슬롯을 변경하지 못했어요. 브라우저 저장 공간과 저장 설정을 확인해 주세요.') }
+  }
+  function resetBackups() {
+    if (!window.confirm('현재 작성 내용과 이 글의 브라우저 임시저장·슬롯을 모두 초기화할까요?')) return
+    try {
+      window.localStorage.removeItem(backupKey)
+      latest.current = { draft: initialDraft, protect: original?.protected ?? false, dirty: false }
+      setBackups(emptyStoryBackups()); setDraft(initialDraft); setProtect(original?.protected ?? false)
+      setPassword(''); setPasswordConfirm(''); setBackupError(''); setBackupStatus('임시저장을 초기화했어요.')
+    } catch { setBackupError('임시저장을 삭제하지 못했어요. 브라우저 저장 설정을 확인해 주세요.') }
+  }
+  function leaveEditor() {
+    if ((contentDirty || latest.current.dirty) && !saveAuto(draft, protect) && !window.confirm('임시저장에 실패했어요. 작성 내용이 사라질 수 있어요. 목록으로 돌아갈까요?')) return
+    finished.current = true
+    onCancel()
+  }
   async function save() {
     if (pending.current) return
-    if (!parseStoryDraft(draft)) { setError('제목과 본문을 입력해 주세요.'); return }
+    if (!parseStoryDraft(draft)) { setError('제목·본문·작성 날짜를 확인해 주세요.'); return }
     if (protect && !(original?.protected && !password) && (password.length < 8 || password.length > 128)) { setError('비밀번호는 8~128자로 입력해 주세요.'); return }
+    if (protect && password !== passwordConfirm) { setError('비밀번호와 비밀번호 확인이 일치하지 않아요.'); return }
     pending.current = true
     setBusy(true); setError('')
     try {
@@ -100,27 +189,63 @@ function StoryEditor({ original, onSaved, onCancel }: { original?: Story, onSave
       const serialized = JSON.stringify(payload)
       if (retry.current.payload !== serialized) retry.current = { payload: serialized, mutation: crypto.randomUUID() }
       const result = readStory(await request('', { ...payload, ...(remote ? { mutation: retry.current.mutation } : {}) }, remote))
-      setPassword(''); onSaved(result)
+      finished.current = true
+      let backupWarning = ''
+      try {
+        const current = readStoryBackups(window.localStorage, backupKey)
+        writeStoryBackups(window.localStorage, backupKey, { ...current, auto: null })
+      } catch { backupWarning = '브라우저 자동 임시저장은 삭제하지 못했어요. 다음에 편집 화면에서 임시저장을 초기화해 주세요.' }
+      setPassword(''); setPasswordConfirm(''); onSaved(result, backupWarning)
     } catch (error) { setError(error instanceof Error ? error.message : '저장하지 못했어요. 입력 내용은 유지돼요.') }
     finally { pending.current = false; setBusy(false) }
   }
   return <div className="story-editor">
-    <div className="story-toolbar"><button type="button" className="soft-button" disabled={busy} onClick={() => { if (!dirty || window.confirm('저장하지 않은 내용을 버리고 목록으로 돌아갈까요?')) onCancel() }}><ArrowLeft size={14} /> 목록</button><div className="story-view-tabs" role="group" aria-label="편집 화면">{(['write', 'preview', 'split'] as const).map(value => <button type="button" key={value} aria-pressed={mode === value} onClick={() => setMode(value)}>{({ write: '작성', preview: '미리보기', split: '함께 보기' })[value]}</button>)}</div><button type="button" className="primary-button" disabled={busy} onClick={() => void save()}>{busy ? '저장 중…' : remote ? '저장' : '로컬에 저장'}</button></div>
-    <p className="story-local-note">{remote ? '저장하면 GitHub 비공개 저장소에 바로 반영해요. 비밀번호 없는 글은 누구나 읽을 수 있어요. 보호된 글도 저장소 관리자에게는 원문이 보여요.' : '로컬 private 저장소에 저장해요. GitHub 원격 반영에는 별도 commit·push가 필요해요.'}</p>
+    <div className="story-toolbar"><button type="button" className="soft-button" disabled={busy} onClick={leaveEditor}><ArrowLeft size={14} /> 목록</button><div className="story-save-actions"><button type="button" className="soft-button" disabled={busy} aria-haspopup="dialog" aria-controls="story-drafts-popup" onClick={openBackups}>임시저장</button><button type="button" className="primary-button" disabled={busy} onClick={() => void save()}>{busy ? '저장 중…' : remote ? '저장' : '로컬에 저장'}</button></div></div>
+    {!remote && <p className="story-local-note">로컬 private 저장소에 저장해요. GitHub 원격 반영에는 별도 commit·push가 필요해요.</p>}
+    {backupError && <p className="story-feedback" role="alert">{backupError}</p>}
+    <dialog ref={backupDialog} id="story-drafts-popup" className="story-drafts-dialog" aria-labelledby="story-drafts-title">
+      <header className="story-drafts-heading"><h2 id="story-drafts-title">임시저장</h2><button type="button" className="soft-button" autoFocus onClick={() => backupDialog.current?.close()}>닫기</button></header>
+      <p className="story-local-note">작성 내용은 같은 기기·브라우저에 자동 임시저장돼요. 비밀번호는 저장하지 않아요. 슬롯은 새 글과 각 글의 수정 화면별로 구분돼요.</p>
+      <p className="story-feedback" role="status">{backupStatus || '입력을 멈추면 자동 임시저장해요.'}</p>
+      {backupError && <p className="story-feedback" role="alert">{backupError}</p>}
+        {backups.auto && <button type="button" className="soft-button" disabled={busy} onClick={() => restoreBackup(backups.auto!)}>자동저장 불러오기 · {new Date(backups.auto.savedAt).toLocaleString('ko-KR')}</button>}
+        <div className="story-draft-slots">{backups.slots.map((slot, index) => <div className="story-draft-slot" key={index}>
+          <strong>슬롯 {index + 1}</strong><p>{slot ? slot.draft.title || '제목 없는 글' : '비어 있음'}</p>
+          {slot && <time dateTime={slot.savedAt}>{new Date(slot.savedAt).toLocaleString('ko-KR')}</time>}
+          <div><button type="button" className="soft-button" disabled={busy} onClick={() => changeSlot(index)}>임시저장</button><button type="button" className="soft-button" disabled={busy || !slot} onClick={() => { if (slot) restoreBackup(slot) }}>불러오기</button><button type="button" className="soft-button" disabled={busy || !slot} onClick={() => changeSlot(index, true)}>삭제</button></div>
+        </div>)}</div>
+        <button type="button" className="soft-button" disabled={busy} onClick={resetBackups}>작성 내용·임시저장 초기화</button>
+    </dialog>
     {error && <p className="story-feedback" role="alert">{error}</p>}
-    <div className={`story-editor-layout story-editor-${mode}`}>
-      {mode !== 'preview' && <fieldset className="story-fields" disabled={busy}>
+    <div className="story-editor-layout story-editor-split">
+      <fieldset className="story-fields" disabled={busy}>
         <label>제목<input value={draft.title} maxLength={120} onChange={event => update('title', event.target.value)} /></label>
         <label>작가명<input value={draft.author} maxLength={60} onChange={event => update('author', event.target.value)} /></label>
-        <label>본문 폰트<select value={draft.font} onChange={event => { if (isStoryFont(event.target.value)) update('font', event.target.value) }}>{Object.entries(storyFonts).map(([value, font]) => <option value={value} key={value}>{font.label}</option>)}</select></label>
+        <label>작성 날짜<input type="date" min="0001-01-01" max="9999-12-31" required value={draft.writtenOn ?? ''} onChange={event => update('writtenOn', event.target.value)} /></label>
+        <div className="story-font-fields">
+          <label>본문 폰트<select value={draft.font} onChange={event => { if (isStoryFont(event.target.value)) update('font', event.target.value) }}>{Object.entries(storyFonts).map(([value, font]) => <option value={value} key={value}>{font.label}</option>)}</select></label>
+          <label>글자 크기<select value={draft.fontSize ?? STORY_DEFAULT_FONT_SIZE} onChange={event => { const fontSize = Number(event.target.value); if (storyFontSizes.includes(fontSize)) setDraft(previous => ({ ...previous, fontSize })) }}>{storyFontSizes.map(size => <option value={size} key={size}>{size}px</option>)}</select></label>
+        </div>
         {fontStatus && <p className="story-font-status" role="status">{fontStatus}</p>}
-        <label className="story-protect"><input type="checkbox" checked={protect} onChange={event => { setProtect(event.target.checked); setPassword('') }} /> 열람 비밀번호 설정</label>
-        {protect && <label>{original?.protected ? '새 비밀번호 (비워 두면 기존 비밀번호 유지)' : '비밀번호'}<input type="text" value={password} autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} onChange={event => setPassword(event.target.value)} /><small>한글을 포함해 8~128자. {remote ? '수정 권한은 글을 작성한 관리자에게 있어요.' : '수정 권한은 로컬 작성자에게 있어요.'}</small></label>}
-        <label>본문<textarea className="story-body-input" value={draft.body} maxLength={STORY_MAX_LENGTH} style={{ fontFamily: storyFonts[draft.font].family }} onChange={event => update('body', event.target.value)} aria-describedby="story-scene-help" /></label>
+        <label className="story-protect"><input type="checkbox" checked={protect} onChange={event => { setProtect(event.target.checked); setPassword(''); setPasswordConfirm('') }} /> 열람 비밀번호 설정</label>
+        {protect && <div className="story-password-fields">
+          <label>{original?.protected ? '새 비밀번호' : '비밀번호'}<input type="text" value={password} autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} onChange={event => setPassword(event.target.value)} /></label>
+          <label>비밀번호 확인<input type="text" value={passwordConfirm} autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} onChange={event => setPasswordConfirm(event.target.value)} /></label>
+          <small className="story-password-help">{original?.protected && '두 칸을 비워 두면 기존 비밀번호를 유지해요. '}한글을 포함해 8~128자. {remote ? '수정 권한은 글을 작성한 관리자에게 있어요.' : '수정 권한은 로컬 작성자에게 있어요.'}</small>
+        </div>}
+        <label>본문<textarea className="story-body-input" value={draft.body} style={{ fontFamily: storyFonts[draft.font].family, fontSize: draft.fontSize }} onChange={event => update('body', event.target.value)} aria-describedby="story-scene-help story-statistics" /></label>
+        <dl id="story-statistics" className="story-statistics" aria-label="본문 통계" aria-busy={statisticsBody !== draft.body}>
+          {([
+            ['공백 포함', `${statistics.withSpaces.toLocaleString()}자`],
+            ['공백 제외', `${statistics.withoutSpaces.toLocaleString()}자`],
+            ['단어 수', statistics.words.toLocaleString()],
+            ['단락 수', statistics.paragraphs.toLocaleString()],
+            ['문장 수', statistics.sentences.toLocaleString()],
+          ] as const).map(([label, count]) => <div key={label}><dt>{label}</dt><dd>{count}</dd></div>)}
+        </dl>
         <p id="story-scene-help" className="story-local-note">한 줄에 ***만 쓰면 미리보기와 본문에서 장면 전환으로 바뀌어요. 붙여넣기도 지원하며 원문은 그대로 편집할 수 있어요.</p>
-        <small>{draft.body.length.toLocaleString()} / {STORY_MAX_LENGTH.toLocaleString()}자</small>
-      </fieldset>}
-      {mode !== 'write' && <StoryReader draft={draft} preview />}
+      </fieldset>
+      <StoryReader draft={draft} writtenOn={draft.writtenOn} preview />
     </div>
   </div>
 }
@@ -178,18 +303,19 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
   }
   if (view.kind === 'edit') {
     if (!canWrite) return <p role="status">관리자로 다시 로그인해 주세요.<button type="button" onClick={() => setView({ kind: 'list' })}>목록</button></p>
-    return <StoryEditor original={view.story} onCancel={() => { setView({ kind: 'list' }); void load() }} onSaved={story => { setView({ kind: 'read', story }); setReaderFont(null); setNotice(remote ? 'GitHub 원격 저장소에 저장했어요.' : '로컬 저장소에 저장했어요. GitHub 원격에는 아직 반영하지 않았어요.'); void load() }} />
+    return <StoryEditor original={view.story} onCancel={() => { setView({ kind: 'list' }); void load() }} onSaved={(story, backupWarning) => { setView({ kind: 'read', story }); setReaderFont(null); setNotice(remote ? 'GitHub 원격 저장소에 저장했어요.' : '로컬 저장소에 저장했어요. GitHub 원격에는 아직 반영하지 않았어요.'); if (backupWarning) setNotice(previous => `${previous} ${backupWarning}`); void load() }} />
   }
-  return <div className="stories">
+  return <div className="stories" aria-busy={loading || busy}>
+    {busy && <div className="story-loading-overlay"><StoryLoading /></div>}
     {view.kind === 'list' ? <>
       {canWrite && <div className="story-toolbar">{!remote && <p className="story-local-note">로컬 private 저장소</p>}<button type="button" className="primary-button" disabled={loading || busy} onClick={() => { setError(''); setView({ kind: 'edit' }) }}><Plus size={15} /> 새 글 쓰기</button></div>}
       {!available && <p className="story-feedback" role="status">이야기 서버가 아직 연결되지 않았어요.</p>}
-      {loading ? <p className="story-feedback" role="status">이야기를 불러오는 중…</p> : !items.length && !error && <div className="story-empty"><p>아직 아무것도 없어요</p></div>}
-      <div className="story-list">{items.map(item => <article key={item.id}><button className="story-list-open" disabled={busy} onClick={() => void open(item)}><span>{item.protected && <LockKeyhole size={14} />}<strong>{item.title}</strong></span><small>{item.author && `${item.author} · `}{formatDate(item.updatedAt)}</small></button>{canEdit(item) && <button className="soft-button" disabled={busy} aria-label={`${item.title} 수정`} onClick={() => void open(item, true)}><Pencil size={14} /> 수정</button>}</article>)}</div>
+      {loading ? <StoryLoading /> : !items.length && !error && <div className="story-empty"><p>아직 아무것도 없어요</p></div>}
+      {!loading && <div className="story-list">{items.map((item, index) => <article key={item.id} style={{ animationDelay: `${Math.min(index, 12) * 65}ms` }}><button className="story-list-open" disabled={busy} onClick={() => void open(item)}><span>{item.protected && <LockKeyhole size={14} />}<strong>{item.title}</strong></span><small>{item.author && `w. ${item.author} · `}{formatDate(storyDate(item))}</small></button>{canEdit(item) && <button className="soft-button" disabled={busy} aria-label={`${item.title} 수정`} onClick={() => void open(item, true)}><Pencil size={14} /> 수정</button>}</article>)}</div>}
     </> : <>
       <div className="story-toolbar"><button className="soft-button" onClick={() => { setView({ kind: 'list' }); setNotice(''); void load() }}><ArrowLeft size={14} /> 목록</button><label className="story-reader-font">폰트<select value={readerFont ?? view.story.font} onChange={event => { if (isStoryFont(event.target.value)) setReaderFont(event.target.value) }}>{Object.entries(storyFonts).map(([value, font]) => <option key={value} value={value}>{font.label}</option>)}</select></label>{canEdit(view.story) && <button className="soft-button" onClick={() => setView({ kind: 'edit', story: view.story })}><Pencil size={14} /> 수정</button>}</div>
       {notice && <p className="story-feedback" role="status">{notice}</p>}
-      <StoryReader draft={{ ...view.story, font: readerFont ?? view.story.font }} updatedAt={view.story.updatedAt} />
+      <StoryReader key={view.story.id} draft={{ ...view.story, font: readerFont ?? view.story.font }} writtenOn={storyDate(view.story)} />
     </>}
     {locked && <form className="story-unlock" onSubmit={event => { event.preventDefault(); void unlock() }}><label>이야기 비밀번호<input ref={password} type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={128} required autoFocus disabled={busy} /></label><button className="primary-button" disabled={busy}>{busy ? '확인 중…' : '열기'}</button><button className="soft-button" type="button" disabled={busy} onClick={() => { setLocked(null); setError('') }}>취소</button></form>}
     {error && <p className="story-feedback" role="alert">{error}</p>}

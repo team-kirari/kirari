@@ -4,12 +4,28 @@ import { mkdtemp, readFile, writeFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
-import { parseStoryDraft, storyBlocks } from '../src/lib/stories.ts'
+import { compareStories, isStoryDate, parseStoryDraft, storyBlocks, storyDate } from '../src/lib/stories.ts'
 import { createLocalStoryMiddleware, createLocalStoryStore } from '../scripts/local-stories.ts'
 import { privateRepoRoot } from '../scripts/private-repo.mjs'
 
 const draft = { title: '합성 시험 글', author: '시험 작성자', body: '첫 문단\n대사\n\n***\n\n다음 장면', font: 'default', password: '' }
 const koreanPassword = '테스트용한글암호입니다'
+
+test('stories longer than 100,000 characters remain editable and round-trip locally', async () => {
+  const body = '가'.repeat(120_001)
+  assert.equal(parseStoryDraft({ ...draft, body }).body, body)
+  const store = createLocalStoryStore(await mkdtemp(join(tmpdir(), 'kirari-long-story-')))
+  const saved = await store.save({ ...draft, body })
+  assert.equal((await store.get(saved.id)).body, body)
+})
+
+test('removed system fonts in existing stories fall back to the site default', () => {
+  for (const font of ['serif', 'sans']) {
+    const parsed = parseStoryDraft({ ...draft, font })
+    assert.equal(parsed.font, 'default')
+    assert.equal(parsed.body, draft.body)
+  }
+})
 
 test('standalone scene markers, pasted CRLF and plain unsafe text retain their meaning', () => {
   assert.deepEqual(storyBlocks('첫 줄\r\n둘째 줄\r\n\r\n *** \r\n\r\n본문의 ***는 유지\n<img src=x onerror=alert(1)>\njavascript:alert(1)'), [
@@ -17,7 +33,7 @@ test('standalone scene markers, pasted CRLF and plain unsafe text retain their m
     { kind: 'paragraph', text: '본문의 ***는 유지\n<img src=x onerror=alert(1)>\njavascript:alert(1)' },
   ])
   assert.deepEqual(storyBlocks('***\n***\n'), [{ kind: 'scene' }, { kind: 'scene' }])
-  for (const value of [null, [], { ...draft, title: '' }, { ...draft, body: 'x'.repeat(100_001) }, { ...draft, font: '__proto__' }, { ...draft, author: 3 }]) assert.equal(parseStoryDraft(value), null)
+  for (const value of [null, [], { ...draft, title: '' }, { ...draft, font: '__proto__' }, { ...draft, author: 3 }]) assert.equal(parseStoryDraft(value), null)
   assert.equal(parseStoryDraft({ ...draft, body: '<script>alert(1)</script>' }).body, '<script>alert(1)</script>')
 })
 
@@ -89,4 +105,44 @@ test('local API rejects cross-origin and oversized requests, separates reader fr
   assert.equal((await fetch(`${base}/00000000-0000-0000-0000-000000000000/unlock`, { method: 'POST', headers, body: '{}' })).status, 404)
   for (let i = 0; i < 30; i++) await fetch(`${base}/${saved.id}/unlock`, { method: 'POST', headers, body: '{}' })
   assert.equal((await fetch(`${base}/${saved.id}/unlock`, { method: 'POST', headers, body: '{}' })).status, 429)
+})
+
+test('writing dates reject impossible or hostile values and use Seoul dates for legacy stories', () => {
+  for (const writtenOn of ['', null, 123, '2026-02-29', '2026-04-31', '0000-01-01', '10000-01-01', '<script>', '2026-01-01T00:00:00Z']) {
+    assert.equal(isStoryDate(writtenOn), false)
+    assert.equal(parseStoryDraft({ ...draft, writtenOn }), null)
+  }
+  assert.equal(parseStoryDraft({ ...draft, writtenOn: '2024-02-29' }).writtenOn, '2024-02-29')
+  assert.equal(storyDate({ createdAt: '2026-01-01T16:00:00Z', updatedAt: '2026-06-01T00:00:00Z' }), '2026-01-02')
+  const older = { id: 'a', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-12-01T00:00:00Z' }
+  const newer = { id: 'b', writtenOn: '2026-02-01', createdAt: '2026-02-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z' }
+  assert.deepEqual([older, newer].sort(compareStories), [newer, older])
+})
+
+test('local writing dates round-trip and edits do not reorder stories by modification time', async () => {
+  const store = createLocalStoryStore(await mkdtemp(join(tmpdir(), 'kirari-story-dates-')))
+  const newer = await store.save({ ...draft, writtenOn: '2025-04-10' })
+  const older = await store.save({ ...draft, writtenOn: '2024-02-29' })
+  const updated = await store.save({ ...older, body: 'Synthetic edited body', password: '' })
+  assert.equal(updated.writtenOn, '2024-02-29')
+  assert.equal(updated.createdAt, older.createdAt)
+  assert.deepEqual((await store.list()).map(item => item.id), [newer.id, older.id])
+  assert.equal((await store.get(older.id)).writtenOn, '2024-02-29')
+  const moved = await store.save({ ...updated, writtenOn: '2026-01-01', password: '' })
+  assert.equal((await store.list())[0].id, moved.id)
+  await assert.rejects(store.save({ ...moved, writtenOn: '2025-02-29', password: '' }), { status: 400 })
+})
+
+test('font sizes are bounded numbers and local saves retain them', async () => {
+  for (const fontSize of [null, '18', 11, 33, 18.5, NaN, Infinity, '18px; color:red']) {
+    assert.equal(parseStoryDraft({ ...draft, fontSize }), null)
+  }
+  assert.equal(parseStoryDraft(draft).fontSize, undefined)
+  const store = createLocalStoryStore(await mkdtemp(join(tmpdir(), 'kirari-story-size-')))
+  const saved = await store.save({ ...draft, fontSize: 24 })
+  assert.equal(saved.fontSize, 24)
+  assert.equal((await store.get(saved.id)).fontSize, 24)
+  const edited = await store.save({ ...saved, fontSize: 12, password: '' })
+  assert.equal(edited.fontSize, 12)
+  await assert.rejects(store.save({ ...edited, fontSize: 99, password: '' }), { status: 400 })
 })

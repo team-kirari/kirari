@@ -32,6 +32,16 @@ function fixture() {
   }
   return { env, request, items: () => items, writes: () => writes, conflict: value => { conflict = value }, enabled: value => { enabled = value }, loseResponse: () => { failAfterWrite = true }, corrupt: () => { items = [{ unexpected: true }]; version++ } }
 }
+test('remote saves accept more than 100,000 characters within byte capacity', async () => {
+  const f = fixture()
+  const body = '가'.repeat(120_001)
+  const response = await f.request('', { ...draft, body }, 'A')
+  assert.equal(response.status, 200)
+  const saved = await response.json()
+  assert.equal(saved.body, body)
+  assert.equal((await (await f.request(`/${saved.id}`)).json()).body, body)
+})
+
 test('remote saves commit immediately, preserve plain unsafe text, retries do not duplicate writes', async () => {
   const f = fixture()
   assert.equal((await f.request('', draft)).status, 401)
@@ -118,4 +128,43 @@ test('local development Origin is denied by default and requires an exact loopba
   assert.equal((await handleStories(unauthenticated, f.env)).status, 401)
   f.env.STORY_LOCAL_ORIGIN = 'https://hostile.invalid'
   assert.equal((await handleStories(preflight('https://hostile.invalid'), f.env)).status, 403)
+})
+
+test('remote writing dates survive saves and sort independently of edits with legacy fallback', async () => {
+  const f = fixture()
+  const save = async body => {
+    const response = await f.request('', { ...body, mutation: randomUUID() }, 'A')
+    assert.equal(response.status, 200)
+    return response.json()
+  }
+  const legacy = await save(draft)
+  const dated = await save({ ...draft, id: randomUUID(), writtenOn: '2000-01-01' })
+  assert.equal(dated.writtenOn, '2000-01-01')
+  const updated = await save({ ...draft, id: dated.id, revision: dated.revision, writtenOn: '2000-01-01', body: 'Synthetic edit' })
+  assert.equal(updated.createdAt, dated.createdAt)
+  const list = await (await f.request()).json()
+  assert.deepEqual(list.map(item => item.id), [legacy.id, dated.id])
+  assert.equal(list[0].createdAt, legacy.createdAt)
+  assert.equal(list[1].writtenOn, dated.writtenOn)
+  assert.equal((await (await f.request(`/${dated.id}`)).json()).writtenOn, '2000-01-01')
+  const moved = await save({ ...draft, id: dated.id, revision: updated.revision, writtenOn: '9999-12-31' })
+  assert.equal((await (await f.request()).json())[0].id, moved.id)
+  const writes = f.writes()
+  assert.equal((await f.request('', { ...draft, id: randomUUID(), mutation: randomUUID(), writtenOn: '2026-02-29' }, 'A')).status, 400)
+  assert.equal(f.writes(), writes)
+})
+
+test('remote font sizes persist and invalid sizes cannot replace stored content', async () => {
+  const f = fixture()
+  const response = await f.request('', { ...draft, fontSize: 24 }, 'A')
+  assert.equal(response.status, 200)
+  const saved = await response.json()
+  assert.equal(saved.fontSize, 24)
+  assert.equal((await (await f.request(`/${saved.id}`)).json()).fontSize, 24)
+  const invalid = await f.request('', { ...draft, revision: 1, mutation: randomUUID(), fontSize: '24' }, 'A')
+  assert.equal(invalid.status, 400)
+  assert.equal(f.writes(), 1)
+  const edited = await f.request('', { ...draft, revision: 1, mutation: randomUUID(), fontSize: 32 }, 'A')
+  assert.equal(edited.status, 200)
+  assert.equal((await edited.json()).fontSize, 32)
 })
