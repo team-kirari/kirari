@@ -182,7 +182,7 @@ export function StoryScreen({ admin = false }: { admin?: boolean }) {
   }
   return <div className="stories">
     {view.kind === 'list' ? <>
-      {canWrite && <div className="story-toolbar"><p className="story-local-note">{remote ? 'GitHub 원격 저장소' : '로컬 private 저장소'}</p><button type="button" className="primary-button" disabled={loading || busy} onClick={() => { setError(''); setView({ kind: 'edit' }) }}><Plus size={15} /> 새 글 쓰기</button></div>}
+      {canWrite && <div className="story-toolbar">{!remote && <p className="story-local-note">로컬 private 저장소</p>}<button type="button" className="primary-button" disabled={loading || busy} onClick={() => { setError(''); setView({ kind: 'edit' }) }}><Plus size={15} /> 새 글 쓰기</button></div>}
       {!available && <p className="story-feedback" role="status">이야기 서버가 아직 연결되지 않았어요.</p>}
       {loading ? <p className="story-feedback" role="status">이야기를 불러오는 중…</p> : !items.length && !error && <div className="story-empty"><p>아직 아무것도 없어요</p></div>}
       <div className="story-list">{items.map(item => <article key={item.id}><button className="story-list-open" disabled={busy} onClick={() => void open(item)}><span>{item.protected && <LockKeyhole size={14} />}<strong>{item.title}</strong></span><small>{item.author && `${item.author} · `}{formatDate(item.updatedAt)}</small></button>{canEdit(item) && <button className="soft-button" disabled={busy} aria-label={`${item.title} 수정`} onClick={() => void open(item, true)}><Pencil size={14} /> 수정</button>}</article>)}</div>
