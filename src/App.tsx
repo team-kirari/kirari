@@ -225,8 +225,8 @@ export default function App() {
     const controller = new AbortController()
     preparation.current = controller
     flushSync(() => {
-      if (returningHome && gallery.length > 1) {
-        setPhotoIndex(previous => (previous + 1 + Math.floor(Math.random() * (gallery.length - 1))) % gallery.length)
+      if (returningHome && localGallery.items.length > 1) {
+        setPhotoIndex(previous => (previous + 1 + Math.floor(Math.random() * (localGallery.items.length - 1))) % localGallery.items.length)
       }
       if (returningHome) setPlayEntrance(true)
       setDraft(null)
@@ -249,7 +249,7 @@ export default function App() {
       transition.current.play(origin?.x ?? window.innerWidth / 2, origin?.y ?? window.innerHeight / 2,
         next === 'gallery' || next === 'guest' ? '#f1dce7' : currentTheme.pale, commit, ready)
     } else commit()
-  }, [currentTheme.pale, setDraft])
+  }, [currentTheme.pale, setDraft, localGallery.items.length])
   useEffect(() => {
     const sync = () => changeRoute(readRoute())
     window.addEventListener('hashchange', sync)

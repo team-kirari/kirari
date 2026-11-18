@@ -1,4 +1,5 @@
 import { handleUpload } from './index.mjs'
+import { handleGallery } from './gallery.mjs'
 import { Buffer } from 'node:buffer'
 import { compareStories, parseStoryDraft } from '../src/lib/stories.ts'
 import { buildStoryIndex, createStoryStore, StoryStoreConflict, STORY_REPO, validArchive } from './story-store.mjs'
@@ -140,4 +141,5 @@ export async function handleStories(request, env, fetcher = fetch, { logs = fals
 export const handleTrpgLogs = (request, env, fetcher = fetch) => handleStories(request, env, fetcher, { logs: true })
 export default { fetch: (request, env) => new URL(request.url).pathname === '/photos'
   ? handleUpload(request, { ...env, PHOTO_GITHUB_WRITE_TOKEN: env.STORY_GITHUB_WRITE_TOKEN, UPLOAD_LIMITER: env.STORY_LIMITER, PHOTO_LOCAL_ORIGIN: env.STORY_LOCAL_ORIGIN })
+  : /^\/gallery(?:\/|$)/.test(new URL(request.url).pathname) ? handleGallery(request, env)
   : /^\/logs(?:\/|$)/.test(new URL(request.url).pathname) ? handleTrpgLogs(request, env) : handleStories(request, env) }

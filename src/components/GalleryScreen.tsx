@@ -55,6 +55,7 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 <input aria-label="갤러리 검색" maxLength={120} placeholder="그림 찾기…" value={query} onChange={event => setQuery(event.target.value)} />
 </label>
 <span className="result-count">{items.length}개의 그림</span>
+<button className="soft-button" type="button" onClick={gallery.refresh}>새로고침</button>
 </div>
     {mode !== '전체보기' && <div className="gallery-groups" aria-label={`${mode} 선택`}>
 <button aria-pressed={!activeGroup} onClick={() => setGroup('')}>{mode} 전체</button>{groups.map(value => <button key={value} aria-pressed={activeGroup === value} onClick={() => setGroup(value)}>{mode === '태그' ? '#' : ''}{value}<small>{gallery.items.filter(item => mode === '태그' ? item.tags.includes(value) : (item.album || '미분류') === value).length}</small>
@@ -87,7 +88,7 @@ export function GalleryScreen({ query, setQuery, admin, gallery }: { query: stri
 <div>{selected.album || '미분류'} · {selected.tags.map(tag => `#${tag}`).join(' ')}</div>{admin && <div>
 <button className="soft-button" disabled={gallery.busy || !gallery.sharedReady} onClick={() => edit(selected)}>그림 정보 편집</button>
 <button className="soft-button" disabled={gallery.busy || !gallery.sharedReady} onClick={() => setDeleting(!deleting)}>공용 갤러리에서 숨기기</button>
-{deleting && <><span>갤러리에서 숨길까요? 배포 파일은 남습니다.</span><button className="soft-button" disabled={gallery.busy} onClick={() => void gallery.edit(selected, selected, true).then(ok => { if (ok) dialog.current?.close() })}>확인</button></>}
+{deleting && <><span>갤러리에서 숨길까요? 직접 사진 링크와 기존 배포 파일은 남을 수 있어요.</span><button className="soft-button" disabled={gallery.busy} onClick={() => void gallery.edit(selected, selected, true).then(ok => { if (ok) dialog.current?.close() })}>확인</button></>}
 </div>}</>}</div>
 </dialog>
     <dialog ref={editor} className="archive-editor" aria-label="그림 정보 편집" onClose={() => setEditing(false)} onCancel={event => { if (gallery.busy) event.preventDefault() }}>{editing && admin && <form onSubmit={event => { event.preventDefault(); void saveMetadata() }}>
